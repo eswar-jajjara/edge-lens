@@ -48,18 +48,19 @@ function renderReport() {
   document.querySelectorAll('[data-export]').forEach(button => { button.disabled = !report; });
   if (!report) { renderLayers(); renderDeveloperReport(); return; }
   const metrics = report.metrics || [], reference = metrics.find(metric => ['pytorch', 'reference', 'baseline'].includes(metric.profile)) || metrics[0];
-  const standard = metrics.find(metric => ['standard', 'default', 'standard_conversion'].includes(metric.profile)) || metrics[1];
-  const configured = metrics.find(metric => ['dashboard', 'configured', 'dashboard_configured'].includes(metric.profile)) || metrics[2];
+  const standard = metrics.find(metric => ['fp32', 'standard', 'default', 'standard_conversion'].includes(metric.profile)) || metrics[1];
+  const configured = metrics.find(metric => ['static_int8', 'dashboard', 'configured', 'dashboard_configured'].includes(metric.profile)) || metrics[2];
   const difference = numeric(configured?.accuracy_pct) && numeric(standard?.accuracy_pct) ? configured.accuracy_pct - standard.accuracy_pct : null;
   const compared = layers().filter(layer => numeric(layer.mae) && numeric(layer.max_abs)).length;
   $('#reference-accuracy').innerHTML = `${number(reference?.accuracy_pct)}<span class="metric-unit">%</span>`;
   $('#accuracy-difference').innerHTML = `${delta(difference)}<span class="metric-unit">pp</span>`;
-  $('#configured-latency').innerHTML = `${number((configured || reference)?.latency_p50_ms, 3)}<span class="metric-unit">ms</span>`;
+  $('#configured-latency').innerHTML = `${number((report.experiment_type ? configured : configured || reference)?.latency_p50_ms, 3)}<span class="metric-unit">ms</span>`;
   $('#layer-coverage').innerHTML = `${compared}<span class="metric-unit">/ ${layers().length}</span>`;
   $('#layer-coverage-note').textContent = demo ? 'Compared / reported · illustrative sample only' : 'Numerically compared / reported layer entries';
   $('#active-model').textContent = displayName(report.model); $('#active-dataset').textContent = displayName(report.dataset);
   $('#active-location').textContent = demo ? 'Illustrative CPU values' : `Measured on ${workerName}`;
-  $('#run-status').textContent = demo ? 'Illustrative' : 'Measured'; $('#run-status').className = `status ${demo ? 'neutral' : 'pass'}`;
+  const candidateFailures = (report.candidates || []).filter(candidate => candidate.status === 'failed').length;
+  $('#run-status').textContent = demo ? 'Illustrative' : candidateFailures ? 'Completed with failures' : 'Measured'; $('#run-status').className = `status ${demo ? 'neutral' : candidateFailures ? 'warning' : 'pass'}`;
   $('#run-id').textContent = demo ? 'DEMO · NOT MEASURED' : state.run?.id || 'Saved report';
   $('#chart-label').textContent = demo ? 'Illustrative CPU values' : desktop ? 'This computer · CPU' : 'Server CPU only'; renderChart(metrics);
   $('#comparison-body').innerHTML = metrics.map((metric, index) => `<tr><td><div class="framework-cell"><span class="framework-logo ${['torch', 'onnx-logo', 'lite'][index % 3]}">${index + 1}</span><div><strong>${escapeHtml(metric.label || human(metric.profile))}</strong><small>${metric.profile === 'imported' ? 'Uploaded model; no PyTorch reference' : index === 0 ? 'Original reference' : index === 1 ? 'Standard settings' : 'Configured settings'}</small></div></div></td><td>${number(metric.accuracy_pct)}${numeric(metric.accuracy_pct) ? '%' : ''}</td><td>${delta(metric.accuracy_delta_pp)}</td><td>${number(metric.agreement_pct)}${numeric(metric.agreement_pct) ? '%' : ''}</td><td>${number(metric.latency_p50_ms, 3)} / ${number(metric.latency_p95_ms, 3)}</td><td>${number(metric.conversion_seconds)}</td><td>${number(numeric(metric.size_bytes) ? metric.size_bytes / 1048576 : null)}</td><td>${scientific(metric.output_mae)}</td></tr>`).join('');
@@ -71,7 +72,7 @@ function renderReport() {
   const environment = report.environment || {}, facts = [ ['Dataset', displayName(report.dataset)], ['Images / classes', `${number(report.dataset?.image_count, 0)} / ${number(report.dataset?.class_count, 0)}`], ['Execution location', demo ? 'Illustrative CPU values' : workerName], ['Platform', environment.platform || environment.system || environment.device || 'See full report'], ['CPU threads', environment.settings?.threads ?? state.run?.request?.settings?.threads ?? '—'], ['Deployment goal', report.target?.name || human(report.target?.id)], ['Device reports', String((report.edge_results || []).filter(x => x.kind === 'hardware').length)] ];
   $('#report-facts').innerHTML = facts.map(([key, value]) => `<dt>${escapeHtml(key)}</dt><dd>${escapeHtml(value)}</dd>`).join('');
   $('#report-methodology').innerHTML = list(report.methodology); $('#report-limitations').innerHTML = list(report.limitations?.length ? report.limitations : ['Server measurements do not establish performance on the target edge device.']);
-  $('#model-artifacts').innerHTML = !demo && report.artifacts?.length ? report.artifacts.map((artifact, index) => `<button class="button secondary" data-artifact="${index}">Save ${escapeHtml(human(artifact.profile))} model ↓</button>`).join('') : '<p class="field-help">Converted model downloads appear after a measured run.</p>';
+  $('#model-artifacts').innerHTML = !demo && report.artifacts?.length ? report.artifacts.map((artifact, index) => `<button class="button secondary" data-artifact="${index}">Save ${escapeHtml(human(artifact.profile))}${artifact.role === 'calibration_statistics' ? '' : ' model'} ↓</button>`).join('') : '<p class="field-help">Converted model downloads appear after a measured run.</p>';
   renderLayers(); renderDeveloperReport();
 }
 function renderHistory() {
@@ -94,13 +95,15 @@ function updateTarget() {
 function updateReadiness() {
   const model = (state.models || []).find(x => x.id === $('#run-model').value);
   const runtime = model?.format === 'tflite' ? {available:state.capabilities?.imported_tflite_execution,reason:'Install ai-edge-litert for imported TFLite inference.'} : state.capabilities?.runtimes?.[$('#run-format').value];
-  const calibrationReady = $('#run-strategy').value !== 'fidelity_search' || ($('#calibration-select').value && $('#calibration-select').value !== $('#dataset-select').value);
+  const quantizing = $('#run-strategy').value === 'quantization_compare';
+  const splitIds = [$('#calibration-select').value, $('#validation-select').value, $('#dataset-select').value];
+  const calibrationReady = quantizing ? splitIds.every(Boolean) && new Set(splitIds).size === 3 : $('#run-strategy').value !== 'fidelity_search' || ($('#calibration-select').value && $('#calibration-select').value !== $('#dataset-select').value);
   const ready = state.connected && calibrationReady && runtime?.available && $('#dataset-select').value && !state.creating && !state.uploading && !isActive(state.run);
   $('#start-benchmark').disabled = !ready;
   $('#start-benchmark').textContent = state.creating ? 'Submitting…' : isActive(state.run) ? 'Benchmark in progress…' : desktop ? 'Run local benchmark →' : 'Run server benchmark →';
   $('#upload-dataset').disabled = !state.connected || state.uploading;
   $('#upload-model').disabled = !state.connected || !state.capabilities?.custom_model_uploads;
-  $('#runtime-note').textContent = !state.connected ? 'Connect to the backend to upload a dataset and start a run.' : !calibrationReady ? 'Choose a separate calibration dataset to enable fidelity search.' : runtime?.available ? (model ? 'Your exported model runs locally with the declared image preprocessing. Unsupported signatures fail with an explanation.' : 'Sample presets use pretrained weights. The first run may download them.') : runtime?.reason || 'This runtime is unavailable. Install its optional backend dependencies before starting this format.';
+  $('#runtime-note').textContent = !state.connected ? 'Connect to the backend to upload a dataset and start a run.' : !calibrationReady ? (quantizing ? 'Choose three separate calibration, validation and test datasets.' : 'Choose a separate calibration dataset to enable fidelity search.') : runtime?.available ? (quantizing ? 'Measures FP32 and static INT8 on this CPU. Unsupported candidates are recorded with their failure reasons.' : model ? 'Your exported model runs locally with the declared image preprocessing. Unsupported signatures fail with an explanation.' : 'Sample presets use pretrained weights. The first run may download them.') : runtime?.reason || 'This runtime is unavailable. Install its optional backend dependencies before starting this format.';
 }
 async function connect() {
   const token = ++state.connectionToken; error(''); $('#server-status').textContent = 'Connecting to the benchmark server…'; $('#connect-server').disabled = true;
@@ -138,6 +141,9 @@ function showRun(run) {
       $('#run-strategy').value = request.strategy || 'fixed_profiles';
       $('#dataset-select').value = request.dataset_id;
       $('#calibration-select').value = request.calibration_dataset_id || '';
+      $('#validation-select').value = request.validation_dataset_id || '';
+      $('#quant-calibration').value = request.quantization?.calibration_method || 'MinMax';
+      $('#quant-per-channel').value = String(request.quantization?.per_channel ?? true);
       for (const [key, id] of Object.entries({warmup_runs:'warmup-runs',measured_runs:'measured-runs',threads:'cpu-threads',atol:'atol',rtol:'rtol'})) {
         if (request.settings?.[key] !== undefined) document.getElementById(id).value = request.settings[key];
       }
@@ -175,7 +181,8 @@ async function pollRun(id, token) {
 async function startBenchmark(event) {
   event.preventDefault(); if ($('#start-benchmark').disabled) return; error(''); state.creating = true; updateReadiness();
   const token = ++state.pollToken;
-  const payload = { model_id: $('#run-model').value, format: $('#run-format').value, target: $('#run-target').value, strategy: $('#run-strategy').value, calibration_dataset_id: $('#run-strategy').value === 'fidelity_search' ? $('#calibration-select').value : null, dataset_id: $('#dataset-select').value, settings: { warmup_runs: Number($('#warmup-runs').value), measured_runs: Number($('#measured-runs').value), threads: Number($('#cpu-threads').value), atol: Number($('#atol').value), rtol: Number($('#rtol').value) } };
+  const strategy = $('#run-strategy').value;
+  const payload = { model_id: $('#run-model').value, format: $('#run-format').value, target: $('#run-target').value, strategy, calibration_dataset_id: strategy !== 'fixed_profiles' ? $('#calibration-select').value : null, validation_dataset_id: strategy === 'quantization_compare' ? $('#validation-select').value : null, quantization: { calibration_method: $('#quant-calibration').value, per_channel: $('#quant-per-channel').value === 'true' }, dataset_id: $('#dataset-select').value, settings: { warmup_runs: Number($('#warmup-runs').value), measured_runs: Number($('#measured-runs').value), threads: Number($('#cpu-threads').value), atol: Number($('#atol').value), rtol: Number($('#rtol').value) } };
   try { const run = await api.createRun(payload); if (state.mode !== 'real' || token !== state.pollToken) return; showRun(run); await refreshHistory(); if (isActive(run)) pollRun(run.id, token); }
   catch (cause) { if (state.mode === 'real' && token === state.pollToken) error(describeError(cause)); }
   finally { state.creating = false; updateReadiness(); }
@@ -214,7 +221,7 @@ document.querySelectorAll('[data-goto]').forEach(button => button.addEventListen
 document.querySelectorAll('[data-export]').forEach(button => button.addEventListener('click', () => exportReport(button.dataset.export)));
 $('#demo-mode').addEventListener('click', () => switchMode('demo')); $('#real-mode').addEventListener('click', () => switchMode('real'));
 $('#connect-server').addEventListener('click', connect); $('#benchmark-form').addEventListener('submit', startBenchmark); $('#upload-dataset').addEventListener('click', uploadDataset);
-$('#run-target').addEventListener('change', updateTarget); $('#run-format').addEventListener('change', updateReadiness); $('#dataset-select').addEventListener('change', updateDatasetDescription);
+$('#run-target').addEventListener('change', updateTarget); $('#run-format').addEventListener('change', modelChanged); $('#dataset-select').addEventListener('change', updateDatasetDescription);
 $('#layer-search').addEventListener('input', renderLayers); $('#layer-filter').addEventListener('change', renderLayers);
 $('#refresh-history').addEventListener('click', async () => { try { error(''); await refreshHistory(); } catch (cause) { error(describeError(cause)); } });
 $('#run-history').addEventListener('click', event => { const button = event.target.closest('[data-run-id]'); if (button) loadRun(button.dataset.runId); });
@@ -256,16 +263,26 @@ function modelChanged() {
   if (model && model.format !== 'pt2') $('#run-format').value = model.format;
   $('#run-format').disabled = Boolean(model && model.format !== 'pt2');
   const searchSupported = model?.format === 'pt2' && $('#run-format').value === 'onnx';
-  $('#run-strategy').disabled = !searchSupported;
-  if (!searchSupported) $('#run-strategy').value = 'fixed_profiles';
+  const quantSupported = ['pt2', 'onnx'].includes(model?.format) && $('#run-format').value === 'onnx';
+  $('#run-strategy').querySelector('[value="fidelity_search"]').disabled = !searchSupported;
+  $('#run-strategy').querySelector('[value="quantization_compare"]').disabled = !quantSupported;
+  $('#run-strategy').disabled = !searchSupported && !quantSupported;
+  if ((!searchSupported && $('#run-strategy').value === 'fidelity_search') || (!quantSupported && $('#run-strategy').value === 'quantization_compare')) $('#run-strategy').value = 'fixed_profiles';
   $('#model-detail').textContent = model ? `${model.input_shape.join(' × ')} · ${model.layout} · ${model.class_count} classes · SHA256 ${model.sha256.slice(0, 16)}…` : 'Optional pretrained preset. Upload your exported classifier to use your own architecture and class order.';
-  $('#calibration-field').hidden = $('#run-strategy').value !== 'fidelity_search';
+  const quantizing = $('#run-strategy').value === 'quantization_compare';
+  $('#calibration-field').hidden = $('#run-strategy').value === 'fixed_profiles';
+  $('#validation-field').hidden = !quantizing;
+  $('#quantization-controls').hidden = !quantizing;
+  document.querySelector('label[for="dataset-select"]').textContent = quantizing ? 'Held-out test images · final evaluation' : 'Labelled image dataset';
+  $('#strategy-help').textContent = quantizing ? 'Upload a PT2 or FP32 ONNX classifier. INT8 uses calibration images only. Validation and held-out test metrics are recorded separately; this experiment does not select a winner.' : 'Fidelity search requires an uploaded PT2 model, ONNX output and separate calibration images. It may select the standard converter when no better numerical match is found.';
   updateReadiness();
 }
 function renderCalibration() {
-  const previous = $('#calibration-select').value;
-  $('#calibration-select').innerHTML = '<option value="">Choose a separate calibration dataset</option>' + state.datasets.map(x => `<option value="${escapeHtml(x.id)}">${escapeHtml(x.name)} · ${x.image_count} images</option>`).join('');
-  if (state.datasets.some(x => x.id === previous)) $('#calibration-select').value = previous;
+  for (const selector of ['#calibration-select', '#validation-select']) {
+    const previous = $(selector).value;
+    $(selector).innerHTML = '<option value="">Choose a separate dataset</option>' + state.datasets.map(x => `<option value="${escapeHtml(x.id)}">${escapeHtml(x.name)} · ${x.image_count} images</option>`).join('');
+    if (state.datasets.some(x => x.id === previous)) $(selector).value = previous;
+  }
 }
 async function uploadModel() {
   const file = $('#model-file').files[0];
@@ -291,15 +308,17 @@ function developerTable(rows, keys) {
 }
 function renderDeveloperReport() {
   const report = state.report;
+  $('#precision-candidates').hidden = !report?.candidates?.length || state.mode === 'demo';
   $('#developer-evidence').hidden = !report || state.mode === 'demo';
   if (report && state.mode !== 'demo') {
     const selection = report.selection;
-    $('#selection-summary').textContent = selection ? `${selection.algorithm}: selected ${human(selection.selected)}. ${selection.objective} Total search: ${number(selection.total_strategy_seconds, 3)} s.` : 'No calibration-based search in this run. Imported models need a PyTorch reference to establish conversion loss.';
+    $('#selection-summary').textContent = report.experiment_type ? 'Fixed FP32/INT8 comparison. No automatic selection and no test-based tuning. Calibration, validation and test evidence are retained separately.' : selection ? `${selection.algorithm}: selected ${human(selection.selected)}. ${selection.objective} Total search: ${number(selection.total_strategy_seconds, 3)} s.` : 'No calibration-based search in this run. Imported models need a PyTorch reference to establish conversion loss.';
     $('#selection-evidence').innerHTML = developerTable(selection?.candidates || [], ['id', 'tolerance_failure_count', 'output_mae', 'output_max_abs', 'export_optimize', 'runtime_optimize']);
     const resolution = report.accuracy_resolution_pp ?? (report.dataset?.image_count ? 100 / report.dataset.image_count : null);
     $('#accuracy-resolution').textContent = `One changed prediction = ${number(resolution, 6)} percentage points on this test set. Output MAE is a separate numerical metric. Small timing differences require repeated runs.`;
     $('#prediction-evidence').innerHTML = developerTable((report.predictions || []).filter(x => x.profile !== 'pytorch').slice(0, 20), ['profile', 'image', 'label', 'prediction', 'reference_prediction', 'max_abs', 'within_tolerance']);
-    $('#reproduce-evidence').textContent = JSON.stringify({ model_sha256: report.model?.sha256, dataset_sha256: report.dataset?.sha256, settings: report.settings, preprocessing: report.model, versions: report.environment?.versions }, null, 2);
+    $('#candidate-evidence').innerHTML = developerTable((report.candidates || []).map(candidate => ({ name: candidate.name, status: candidate.status, validation_accuracy_pct: candidate.validation_metrics?.accuracy_pct, test_accuracy_pct: candidate.test_metrics?.accuracy_pct, latency_p50_ms: candidate.test_metrics?.latency_p50_ms, qdq_operations: `${candidate.inventory?.qdq_operation_count ?? '—'} / ${candidate.inventory?.eligible_operation_count ?? '—'}`, failure: candidate.failure ? `${candidate.failure.stage}: ${candidate.failure.message}` : '—' })), ['name', 'status', 'validation_accuracy_pct', 'test_accuracy_pct', 'latency_p50_ms', 'qdq_operations', 'failure']);
+    $('#reproduce-evidence').textContent = JSON.stringify({ model_sha256: report.model?.sha256, dataset_sha256: report.dataset?.sha256, datasets: report.datasets, candidates: report.candidates, settings: report.settings, preprocessing: report.model, versions: report.environment?.versions }, null, 2);
   }
   renderEdge();
 }
@@ -351,8 +370,9 @@ async function savePackage(id) {
   download(`EdgeLens-${id}.zip`, await response.blob(), 'application/zip');
 }
 $('#upload-model').addEventListener('click', uploadModel);
-$('#run-model').addEventListener('change', modelChanged); $('#run-format').addEventListener('change', modelChanged);
+$('#run-model').addEventListener('change', modelChanged);
 $('#run-strategy').addEventListener('change', modelChanged); $('#calibration-select').addEventListener('change', updateReadiness);
+$('#validation-select').addEventListener('change', updateReadiness);
 $('#prepare-edge').addEventListener('click', event => edgeAction(event.currentTarget, async () => {
   const value = await api.preparePackage(state.run.id, {artifact_index: selectedArtifact(), arena_kib: Number($('#arena-kib').value)});
   await refreshEdgeRecords(); $('#edge-package').value = value.id; await savePackage(value.id);

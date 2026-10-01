@@ -12,7 +12,7 @@ import zlib
 MAX_ARCHIVE_BYTES = 50 * 1024 * 1024
 MAX_EXPANDED_BYTES = 200 * 1024 * 1024
 MAX_ENTRY_BYTES = 10 * 1024 * 1024
-MAX_IMAGES = 200
+MAX_IMAGES = 1000
 MAX_LABEL_BYTES = 1024 * 1024
 
 
@@ -58,7 +58,7 @@ def ingest_dataset(content: bytes, name: str, data_dir: Path) -> dict:
     try:
         with zipfile.ZipFile(BytesIO(content)) as archive:
             members = archive.infolist()
-            if len(members) > 1201:
+            if len(members) > 11001:
                 raise DatasetValidationError("Archive contains too many entries")
             seen, expanded, images, label_entry = set(), 0, [], None
             for member in members:
@@ -88,7 +88,7 @@ def ingest_dataset(content: bytes, name: str, data_dir: Path) -> dict:
             if label_entry is None:
                 raise DatasetValidationError("A root labels.json mapping class folders to model class indices is required")
             if not 2 <= len(images) <= MAX_IMAGES:
-                raise DatasetValidationError("Dataset must contain between 2 and 200 images")
+                raise DatasetValidationError(f"Dataset must contain between 2 and {MAX_IMAGES} images")
             if label_entry.file_size > MAX_LABEL_BYTES:
                 raise DatasetValidationError("labels.json is too large")
             labels = json.loads(_read_entry(archive, label_entry, MAX_LABEL_BYTES).decode("utf-8"), object_pairs_hook=_unique_keys)

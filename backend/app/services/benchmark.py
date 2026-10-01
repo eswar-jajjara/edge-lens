@@ -31,7 +31,7 @@ class RuntimeUnavailable(RuntimeError):
 
 
 MODELS = {"mobilenet_v2": "MobileNetV2", "resnet18": "ResNet18"}
-MAX_IMAGES = 200
+MAX_IMAGES = 1000
 MAX_IMAGE_BYTES = 10 * 1024 * 1024
 MAX_IMAGE_PIXELS = 20_000_000
 
@@ -118,6 +118,8 @@ def _load_inputs(dataset: dict, weights, modules: dict):
     entries = dataset.get("entries", [])
     if not 1 <= len(entries) <= MAX_IMAGES:
         raise ValueError(f"Dataset must contain 1 to {MAX_IMAGES} labelled images")
+    if len(entries) * 3 * 224 * 224 * 4 > 512 * 1024 * 1024:
+        raise ValueError("Preprocessed dataset exceeds 512 MiB; use fewer images")
     tensors, labels = [], []
     image_module = modules["PIL.Image"]
     transform = weights.transforms()
@@ -176,20 +178,33 @@ def _evaluate(infer, inputs, reference_outputs, labels, settings, np) -> dict:
     return result
 
 
-def _time_profiles(profiles, settings) -> dict:
+def _time_profiles(profiles, settings, failures=None) -> dict:
     """Rotate profile order across rounds, using the identical first input."""
-    for _, infer, sample in profiles:
-        for _ in range(settings["warmup_runs"]):
-            infer(sample)
+    failed = failures if failures is not None else {}
+    for name, infer, sample in profiles:
+        try:
+            for _ in range(settings["warmup_runs"]):
+                infer(sample)
+        except Exception as exc:
+            if failures is None:
+                raise
+            failed[name] = exc
     timings = {name: [] for name, _, _ in profiles}
     for round_index in range(settings["measured_runs"]):
         offset = round_index % len(profiles)
         for name, infer, sample in profiles[offset:] + profiles[:offset]:
-            started = time.perf_counter_ns()
-            infer(sample)
-            timings[name].append((time.perf_counter_ns() - started) / 1_000_000)
-    return {name: {"latency_p50_ms": percentile(values, 50), "latency_p95_ms": percentile(values, 95),
-                   "latency_samples_ms": values} for name, values in timings.items()}
+            if name in failed:
+                continue
+            try:
+                started = time.perf_counter_ns()
+                infer(sample)
+                timings[name].append((time.perf_counter_ns() - started) / 1_000_000)
+            except Exception as exc:
+                if failures is None:
+                    raise
+                failed[name] = exc
+    return {name: {"latency_mean_ms": sum(values) / len(values), "latency_p50_ms": percentile(values, 50), "latency_p95_ms": percentile(values, 95),
+                   "latency_samples_ms": values} for name, values in timings.items() if name not in failed}
 
 
 def _ort_session(ort, path_or_bytes, threads: int, diagnostic: bool = False):

@@ -11,14 +11,14 @@
 <body>
 <aside class="sidebar">
 <a class="brand" href="#overview" aria-label="EdgeLens home"><span class="brand-icon">E<span>↗</span></span> EdgeLens<span class="brand-dot">.</span></a>
-<div class="workspace-label">CONVERSION WORKSPACE</div>
+<div class="workspace-label">DEVELOPER WORKSPACE</div>
 <nav aria-label="Main navigation">
 <button class="nav-item active" data-page="overview"><span aria-hidden="true">▦</span> Overview</button>
 <button class="nav-item" data-page="diagnostics"><span aria-hidden="true">⌘</span> Layer diagnostics</button>
 <button class="nav-item" data-page="report"><span aria-hidden="true">▤</span> Reports & history</button>
 <button class="nav-item" data-page="edge"><span aria-hidden="true">▣</span> Edge hardware</button></nav>
 <div class="sidebar-project"><span class="project-symbol">P</span><div><strong>Image classification</strong><small>PyTorch → ONNX / TFLite</small></div></div>
-<div class="sidebar-bottom"><span class="outline-tag">MEASURE. COMPARE. UNDERSTAND.</span><p>A clearer view of your<br>model conversions.</p><div class="sidebar-divider"></div><span class="avatar">C2</span><div><strong>Batch C2C-62</strong><small>Research workspace</small></div></div>
+<div class="sidebar-bottom"><span class="outline-tag">MEASURE. COMPARE. UNDERSTAND.</span><p>A clearer view of your<br>deployment experiments.</p><div class="sidebar-divider"></div><span class="avatar">EL</span><div><strong>Developer tools</strong><small>Reproducible experiments</small></div></div>
 </aside>
 <div class="main-shell">
 <header class="topbar"><div class="breadcrumb">Workspace <span>/</span> <strong id="breadcrumb">Overview</strong></div><span class="demo-indicator" id="environment-label">Illustrative demo</span></header>
@@ -47,15 +47,16 @@
 <label class="field-label">Deployment goal<select id="run-target" class="full-input"><option value="raspberry_pi">Raspberry Pi</option><option value="esp32">ESP32</option></select></label>
 </div>
 <p class="field-help" id="model-detail"></p><div class="target-hint" id="target-hint"></div>
-<div class="setup-grid"><label class="field-label">Conversion strategy<select id="run-strategy" class="full-input"><option value="fixed_profiles">Fixed profiles / benchmark existing model</option><option value="fidelity_search">EdgeLens fidelity-guided ONNX conversion</option></select></label><label id="calibration-field" class="field-label" hidden>Calibration dataset (separate from test)<select id="calibration-select" class="full-input"></select></label></div>
-<p class="field-help">Fidelity search requires an uploaded PT2 model, ONNX output and separate calibration images. It may select the standard converter when no better numerical match is found.</p>
+<div class="setup-grid"><label class="field-label">Experiment strategy<select id="run-strategy" class="full-input"><option value="fixed_profiles">Fixed profiles / benchmark existing model</option><option value="fidelity_search">EdgeLens fidelity-guided ONNX conversion</option><option value="quantization_compare">Compare FP32 vs static INT8 · ONNX</option></select></label><label id="calibration-field" class="field-label" hidden>Calibration images · set INT8 ranges<select id="calibration-select" class="full-input"></select></label><label id="validation-field" class="field-label" hidden>Validation images · inspect the fixed candidates<select id="validation-select" class="full-input"></select></label></div>
+<p class="field-help" id="strategy-help">Fidelity search requires an uploaded PT2 model, ONNX output and separate calibration images. It may select the standard converter when no better numerical match is found.</p>
+<div id="quantization-controls" class="settings-grid" hidden><label>INT8 calibration method<select class="full-input" id="quant-calibration"><option>MinMax</option><option>Entropy</option><option>Percentile</option></select></label><label>Weight calibration<select class="full-input" id="quant-per-channel"><option value="true">Per channel</option><option value="false">Per tensor</option></select></label></div>
 <div class="dataset-area"><div><label class="field-label" for="dataset-select">Labelled image dataset</label><select id="dataset-select" class="full-input"><option value="">Upload a dataset to begin</option></select><p class="field-help" id="dataset-description">Accuracy needs labelled images with ImageNet class IDs.</p></div><div class="upload-area"><label class="field-label" for="dataset-file">Upload dataset ZIP</label><input type="file" id="dataset-file" accept=".zip,application/zip"><button type="button" class="button secondary" id="upload-dataset">Upload dataset ↑</button><span class="field-help" id="upload-status" aria-live="polite"></span></div></div>
-<details class="dataset-guide"><summary>How to prepare your dataset</summary><p>Use 2–200 JPG or PNG images in class folders, plus a root <code>labels.json</code> mapping each folder to its model class index (0 to class_count − 1). ZIP size: up to 50 MB. Use real validation images that were not used for training.</p><pre>images.zip
+<details class="dataset-guide"><summary>How to prepare your dataset</summary><p>Use 2–1,000 JPG or PNG images in class folders, plus a root <code>labels.json</code> mapping each folder to its model class index (0 to class_count − 1). ZIP size: up to 50 MB. Preprocessed inputs must fit the 512 MiB budget; FP32/INT8 experiments share that budget across all three splits. Small sets only check that the workflow runs.</p><pre>images.zip
 ├── labels.json  →  {"tabby": 281, "golden_retriever": 207}
 ├── tabby/
 │   └── image-01.jpg
 └── golden_retriever/
-    └── image-02.jpg</pre><p>Use your model’s exact output class order. The sample presets use ImageNet indices; a custom two-class model might use {"cat": 0, "dog": 1}. Upload a separate calibration ZIP for fidelity-guided conversion.</p></details>
+    └── image-02.jpg</pre><p>Use your model’s exact output class order. The sample presets use ImageNet indices; a custom two-class model might use {"cat": 0, "dog": 1}. For FP32/INT8, upload three disjoint ZIPs: calibration, validation and held-out test. Select the test ZIP below and the other two above. Renaming duplicate images does not make them separate.</p></details>
 <details class="advanced-settings"><summary>Benchmark settings</summary><div class="settings-grid"><label>Warm-up runs<input id="warmup-runs" type="number" min="1" max="50" value="3" required></label><label>Measured runs<input id="measured-runs" type="number" min="3" max="200" value="10" required></label><label>CPU threads<input id="cpu-threads" type="number" min="1" max="8" value="1" required></label><label>Absolute tolerance<input id="atol" type="number" min="0" max="1" step="any" value="0.0001" required></label><label>Relative tolerance<input id="rtol" type="number" min="0" max="1" step="any" value="0.001" required></label></div></details>
 <div class="run-actions"><p id="runtime-note">Checking runtime availability…</p><button class="button primary" type="submit" id="start-benchmark" disabled>Run server benchmark <span aria-hidden="true">→</span></button></div>
 </form>
@@ -66,15 +67,16 @@
 <section class="metric-grid" aria-label="Comparison summary">
 <article class="metric"><div class="metric-label">Model accuracy <span>◎</span></div><div class="metric-value" id="reference-accuracy">—</div><div class="metric-note">Top-1 predictions against true labels</div></article>
 <article class="metric"><div class="metric-label">Accuracy difference <span>≈</span></div><div class="metric-value" id="accuracy-difference">—</div><div class="metric-note">Configured minus standard · percentage points</div></article>
-<article class="metric"><div class="metric-label">Inference latency <span>ϟ</span></div><div class="metric-value" id="configured-latency">—</div><div class="metric-note">Selected / imported CPU median · milliseconds</div></article>
+<article class="metric"><div class="metric-label">Inference latency <span>ϟ</span></div><div class="metric-value" id="configured-latency">—</div><div class="metric-note">INT8 / configured / imported CPU median · milliseconds</div></article>
 <article class="metric"><div class="metric-label">Layer coverage <span>⌕</span></div><div class="metric-value" id="layer-coverage">—</div><div class="metric-note" id="layer-coverage-note">Numerically compared / reported layers</div></article>
 </section>
 <div class="analysis-grid">
 <section class="panel chart-panel"><div class="panel-heading"><div><h2>Inference latency</h2><p>Median execution time per inference</p></div><span class="subtle-pill" id="chart-label">Illustrative server CPU</span></div><div id="performance-chart" class="benchmark-chart"></div><div class="chart-foot"><span>Warm-up precedes timed runs</span><strong>Milliseconds · lower is faster</strong></div></section>
 <section class="panel target-panel"><div class="panel-heading"><div><h2>Deployment goal</h2><p>Hardware compatibility is a separate check</p></div><span class="target-icon" aria-hidden="true">▣</span></div><div class="target-content"><h3 id="target-name">Raspberry Pi</h3><span class="status neutral" id="target-status">Not tested on device</span><ul id="target-notes"></ul><div class="device-latency"><span>Actual device latency</span><strong>Not measured</strong></div></div></section>
 </div>
-<section class="panel comparison-panel"><div class="panel-heading"><div><h2>Conversion comparison</h2><p>Same images. Same reference. Differences measured without assuming an improvement.</p></div><button class="text-button" data-export="csv">Export CSV ↗</button></div><div class="table-scroll"><table><thead><tr><th>Profile</th><th>Top-1 accuracy</th><th>Δ vs reference <span class="th-unit">pp</span></th><th>Prediction agreement</th><th>Median / p95 <span class="th-unit">ms</span></th><th>Conversion <span class="th-unit">s</span></th><th>Size <span class="th-unit">MiB</span></th><th>Output MAE</th></tr></thead><tbody id="comparison-body"></tbody></table></div><div class="table-note">Accuracy uses the dataset labels. Agreement uses supplied PyTorch predictions; imported-only models show no reference comparison. Conversion time is measured separately from inference latency.</div></section>
+<section class="panel comparison-panel"><div class="panel-heading"><div><h2>Conversion comparison</h2><p>Same images. Same reference. Differences measured without assuming an improvement.</p></div><button class="text-button" data-export="csv">Export CSV ↗</button></div><div class="table-scroll"><table><thead><tr><th>Profile</th><th>Top-1 accuracy</th><th>Δ vs reference <span class="th-unit">pp</span></th><th>Prediction agreement</th><th>Median / p95 <span class="th-unit">ms</span></th><th>Conversion <span class="th-unit">s</span></th><th>Size <span class="th-unit">MiB</span></th><th>Output MAE</th></tr></thead><tbody id="comparison-body"></tbody></table></div><div class="table-note">Accuracy uses test labels. Agreement uses the declared PyTorch or FP32 ONNX reference. Standalone imported models have no comparison. Conversion time is measured separately from inference latency.</div></section>
 <div class="finding-teaser"><div><span class="warning-symbol" aria-hidden="true">i</span><div><strong id="result-summary"></strong><p>Open diagnostics to inspect aligned, changed and unavailable layer comparisons.</p></div></div><button class="button secondary" data-goto="diagnostics">Inspect layers →</button></div>
+<section id="precision-candidates" class="panel" hidden><div class="panel-heading"><div><span class="step-kicker">PRECISION EXPERIMENT</span><h2>Candidate outcomes</h2><p>Fixed configurations. Calibration sets ranges; validation and test results stay separate.</p></div><span class="subtle-pill">Host CPU evidence</span></div><div class="developer-content"><div id="candidate-evidence"></div><p class="field-help">Failed candidates retain their explanations. QDQ coverage is a graph inventory; floating-point operations may remain. No device latency or peak RAM is inferred.</p></div></section>
 </div>
 </div>
 <div id="diagnostics-page" class="page-panel" hidden>
@@ -108,7 +110,7 @@
 <div class="setup-grid"><label class="field-label">Submitted job<select class="full-input" id="ei-job"></select></label><button class="button secondary" id="refresh-ei">Fetch completed analysis</button></div><div id="ei-evidence"></div></div></section>
 </div></div>
 
-<footer class="footer"><span>EdgeLens <span class="footer-dot">/</span> PyTorch-to-Edge validation</span><span>Image classification · CSE-2</span></footer>
+<footer class="footer"><span>EdgeLens <span class="footer-dot">/</span> Model deployment experiments</span><span>Image classification · developer tools</span></footer>
 </main>
 </div><div id="toast" role="status" aria-live="polite" hidden></div>
 </body></html>

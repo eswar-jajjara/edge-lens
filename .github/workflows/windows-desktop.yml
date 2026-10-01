@@ -42,6 +42,14 @@ jobs:
           & node_modules/electron/dist/electron.exe . --smoke-test 2>&1 | Tee-Object -FilePath $log
           if ($LASTEXITCODE -ne 0) { throw 'Native desktop startup failed' }
           if (-not (Select-String -LiteralPath $log -Pattern '"desktop_smoke":"passed"' -Quiet)) { throw 'Desktop smoke success message missing' }
+      - name: Verify developer conversions and real QDQ precision experiments
+        shell: pwsh
+        run: |
+          Set-Location (Join-Path $env:EDGELENS_TEAM_ROOT 'backend')
+          $env:EDGELENS_TEST_CUSTOM = '1'
+          $env:PYTHONUTF8 = '1'
+          & .venv/Scripts/python.exe -m unittest discover -s tests -v
+          if ($LASTEXITCODE -ne 0) { throw 'Developer model/precision tests failed' }
       - name: Build and relocate the portable distribution
         shell: pwsh
         run: |

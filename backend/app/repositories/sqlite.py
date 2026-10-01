@@ -28,9 +28,12 @@ class Repository:
         with self._connection() as connection:
             connection.execute("PRAGMA journal_mode=WAL")
             version = connection.execute("PRAGMA user_version").fetchone()[0]
-            if version > 2:
+            if version > 3:
                 raise RuntimeError("This database was created by a newer EdgeLens version; upgrade the application.")
-            migration = (Path(__file__).parent / "migrations" / "002_developer_models.sql").read_text(encoding="utf-8") if version < 2 else ""
+            migrations = Path(__file__).parent / "migrations"
+            migration = "".join((migrations / filename).read_text(encoding="utf-8") + "\n"
+                                for threshold, filename in ((2, "002_developer_models.sql"), (3, "003_precision_experiments.sql"))
+                                if version < threshold)
             connection.executescript("""
                 BEGIN IMMEDIATE;
                 CREATE TABLE IF NOT EXISTS datasets (
@@ -143,7 +146,7 @@ class Repository:
                 (status, _now(), _json(error) if error is not None else None,
                  _json(report) if report is not None else None, run_id),
             )
-            for table in ("run_metrics", "layer_results", "model_artifacts"):
+            for table in ("run_metrics", "layer_results", "model_artifacts", "run_candidates", "run_datasets"):
                 connection.execute(f"DELETE FROM {table} WHERE run_id=?", (run_id,))
             if report is not None:
                 self._save_report_rows(connection, run_id, report)
@@ -151,6 +154,16 @@ class Repository:
 
     @staticmethod
     def _save_report_rows(connection: sqlite3.Connection, run_id: str, report: dict):
+        for candidate in report.get("candidates", []):
+            connection.execute("INSERT INTO run_candidates VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                               (run_id, candidate["id"], candidate.get("name"), candidate.get("candidate_type"), candidate.get("precision"),
+                                candidate["status"], candidate.get("artifact_sha256"), _json(candidate.get("configuration", {})),
+                                _json(candidate["failure"]) if candidate.get("failure") else None,
+                                _json(candidate["validation_metrics"]) if candidate.get("validation_metrics") else None,
+                                _json(candidate["test_metrics"]) if candidate.get("test_metrics") else None, _json(candidate)))
+        for role, dataset in report.get("datasets", {}).items():
+            connection.execute("INSERT INTO run_datasets VALUES (?, ?, ?, ?, ?, ?)",
+                               (run_id, role, dataset["id"], dataset["sha256"], dataset["preprocessed_sha256"], _json(dataset)))
         for index, metric in enumerate(report.get("metrics", [])):
             connection.execute(
                 "INSERT INTO run_metrics VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",

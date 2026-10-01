@@ -42,6 +42,8 @@ class ValidationService:
                 payload["_model"] = self.repository.get_model(payload["model_id"])
                 if payload.get("calibration_dataset_id"):
                     payload["_calibration"] = self.repository.get_dataset(payload["calibration_dataset_id"])
+                if payload.get("validation_dataset_id"):
+                    payload["_validation"] = self.repository.get_dataset(payload["validation_dataset_id"])
                 report = run_developer_benchmark(payload, dataset, directory)
             else:
                 report = self.runner(payload, dataset, directory)

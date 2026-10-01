@@ -29,7 +29,7 @@ A weights-only `.pth` file cannot reconstruct its architecture automatically. Ex
 ## Run an experiment yourself
 
 1. Open **Bring your own classifier**. Select your export. Enter its class count, input shape, layout, pixel scale, channel means/stds and resize rule. These must match training. Save the model.
-2. Prepare 2–200 held-out JPG/PNG images in a ZIP (up to 50 MiB). At the ZIP root, include `labels.json`, for example `{"cat":0,"dog":1}`. Put images in `cat/` and `dog/`. IDs must match the model's actual output class order. The built-in ImageNet presets still use ImageNet indices, not this example mapping.
+2. Prepare 2–1,000 held-out JPG/PNG images in a ZIP (up to 50 MiB; preprocessed inputs must fit 512 MiB). At the ZIP root, include `labels.json`, for example `{"cat":0,"dog":1}`. Put images in `cat/` and `dog/`. IDs must match the model's actual output class order. The built-in ImageNet presets still use ImageNet indices, not this example mapping.
 3. Upload the test ZIP. For a PT2 conversion, choose ONNX. For an imported ONNX/TFLite model, the original format is selected automatically.
 4. For **EdgeLens fidelity-guided ONNX conversion**, upload an additional ZIP of different calibration images and select it in the calibration field. Keep the held-out ZIP selected as the labelled test dataset. Identical archives and duplicate preprocessed images across the two sets are rejected.
 5. Select the deployment goal and run the benchmark. Real measurements appear only after execution succeeds. Unsupported models show a saved failure, not demo results.

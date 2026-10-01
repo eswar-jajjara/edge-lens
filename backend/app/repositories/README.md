@@ -4,4 +4,4 @@
 
 `datasets` stores archive metadata, labels and the server-created archive path. `runs` retains the entire request and report JSON. `run_metrics`, `layer_results` and `model_artifacts` store individually queryable report records; report replacement updates all three tables atomically. Artifact rows contain filesystem paths, SHA-256 hashes and sizes, rather than model blobs. Preserve the data directory when deploying.
 
-Schema version 1 is created idempotently. Future schema changes need explicit migrations before `PRAGMA user_version` is advanced. SQLite is intended for one backend instance, not a shared network filesystem or multiple job runners.
+Additive migrations upgrade existing databases to schema 3. Version 2 adds developer models/device records; version 3 adds `run_candidates` and `run_datasets` for candidate configuration, status/failure, validation/test metrics, artifact hashes and dataset roles. Full report and normalized rows are replaced together in one transaction. SQLite is intended for one backend instance, not a shared network filesystem or multiple job runners.

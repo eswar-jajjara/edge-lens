@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 import hashlib
 import importlib.metadata
 import io
+import os
 import platform
 import shutil
 import time
@@ -55,11 +56,11 @@ def load_images(dataset, spec):
     return arrays, labels
 
 
-def disjoint_inputs(left, right):
+def disjoint_inputs(left, right, left_role="Calibration", right_role="test"):
     """Catch duplicated decoded/preprocessed images even when archive names differ."""
     digests = {hashlib.sha256(x.tobytes()).digest() for x in left}
     if any(hashlib.sha256(x.tobytes()).digest() in digests for x in right):
-        raise ValueError("Calibration and test datasets overlap after preprocessing. Supply separate images.")
+        raise ValueError(f"{left_role} and {right_role} datasets overlap after preprocessing. Supply separate images.")
 
 
 def onnx_session(path, threads, optimize=True):
@@ -135,6 +136,276 @@ def checked(infer, spec):
 
 def rank_fidelity(metric):
     return (metric["tolerance_failure_count"], metric["output_max_abs"], metric["output_mae"])
+
+
+def evaluate_profile(profile, arrays, reference_outputs, labels, dataset, settings, comparison_available=True):
+    """Shared labelled evaluation for existing conversions and precision candidates."""
+    import numpy as np
+    metric = b._evaluate(profile["infer"], arrays, reference_outputs, labels, settings, np)
+    outputs = metric.pop("outputs")
+    predictions = []
+    for i, (out, ref, label) in enumerate(zip(outputs, reference_outputs, labels)):
+        diff = np.abs(out.astype(np.float64) - ref.astype(np.float64))
+        predictions.append({"profile": profile["profile"], "sample_index": i, "image": dataset["entries"][i]["path"], "label": label,
+                            "prediction": int(out.argmax()), "reference_prediction": int(ref.argmax()) if comparison_available else None,
+                            "mae": float(diff.mean()) if comparison_available else None,
+                            "max_abs": float(diff.max()) if comparison_available else None,
+                            "within_tolerance": bool(np.allclose(out, ref, atol=settings["atol"], rtol=settings["rtol"])) if comparison_available else None})
+    if not comparison_available:
+        for key in ("accuracy_delta_pp", "agreement_pct", "output_mae", "output_max_abs", "within_tolerance", "tolerance_failure_count"):
+            metric[key] = None
+    metric.update(profile=profile["profile"], label=profile["label"], conversion_seconds=profile["conversion_seconds"],
+                  size_bytes=profile["path"].stat().st_size)
+    return metric, predictions
+
+
+def _versions():
+    versions = {}
+    for name in ("torch", "onnx", "onnxruntime", "numpy", "Pillow", "ai-edge-litert", "litert-torch"):
+        try:
+            versions[name] = importlib.metadata.version(name)
+        except importlib.metadata.PackageNotFoundError:
+            pass
+    return versions
+
+
+def _split_metadata(dataset, arrays, role):
+    digest = hashlib.sha256()
+    for array, entry in zip(arrays, dataset["entries"]):
+        digest.update(hashlib.sha256(array.tobytes()).digest())
+        digest.update(str(entry["label"]).encode("ascii") + b"\0")
+    return {**{k: dataset[k] for k in ("id", "name", "sha256", "image_count", "class_count", "labels")},
+            "role": role, "preprocessed_sha256": digest.hexdigest()}
+
+
+def _provenance(metric, split):
+    """Each reported metric declares both evidence origin and interpretation."""
+    accuracy = {"accuracy_pct", "accuracy_delta_pp", "agreement_pct", "correct_count", "sample_count", "output_mae", "output_max_abs", "tolerance_failure_count", "within_tolerance", "accuracy_delta_vs_fp32_pp"}
+    timing = {"latency_mean_ms", "latency_p50_ms", "latency_p95_ms", "latency_samples_ms"}
+    keys = accuracy | timing | {"size_bytes", "conversion_seconds", "peak_ram_bytes", "device_latency_ms"}
+    metric["provenance"] = {}
+    for key in sorted(keys):
+        value = metric.get(key)
+        origin = {"status": "UNAVAILABLE" if value is None else "MEASURED", "scope": "host_cpu"}
+        if key in accuracy:
+            origin.update(split=split, sample_count=metric.get("sample_count"), method="Labelled top-1 or raw output comparison on identical preprocessed inputs")
+        elif key in timing:
+            origin.update(method="Invocation and output copy on one fixed preprocessed image; warm-ups excluded")
+        elif key == "size_bytes":
+            origin.update(method="Serialized artifact bytes on disk; not runtime RAM or total firmware flash")
+        elif key == "conversion_seconds":
+            origin.update(method="FP32 export plus candidate transformation where applicable; dependency export time retained separately")
+        elif key == "device_latency_ms":
+            origin.update(scope="physical_device", reason="No physical-device run in this experiment")
+        else:
+            origin.update(reason="Peak process RAM is not measured")
+        metric["provenance"][key] = origin
+    return metric
+
+
+def _run_quantization_comparison(request, dataset, output_dir):
+    """Fixed FP32/static-INT8 experiments, sharing the existing evaluation and timer."""
+    import numpy as np
+    from app.services import quantization as q
+    source, settings = request["_model"], b._settings(request)
+    if source["format"] not in {"pt2", "onnx"} or request["format"] != "onnx":
+        raise ValueError("FP32/INT8 experiments require an uploaded PT2 or FP32 ONNX classifier")
+    calibration, validation = request.get("_calibration"), request.get("_validation")
+    if not calibration or not validation:
+        raise ValueError("Supply separate calibration, validation and test datasets")
+    split_data = {"calibration": calibration, "validation": validation, "test": dataset}
+    if len({x["sha256"] for x in split_data.values()}) != 3:
+        raise ValueError("Calibration, validation and test datasets must be separate archives")
+    spec, source_path = public_model(source), verify_model(source)
+    pixels = np.prod(spec["input_shape"]) * 4
+    if sum(x["image_count"] for x in split_data.values()) * pixels > 512 * 1024 * 1024:
+        raise ValueError("Combined preprocessed calibration, validation and test inputs exceed 512 MiB")
+    split_inputs = {role: load_images(value, spec) for role, value in split_data.items()}
+    roles = list(split_inputs)
+    for i, role in enumerate(roles):
+        for other in roles[i + 1:]:
+            disjoint_inputs(split_inputs[role][0], split_inputs[other][0], role.capitalize(), other)
+    class_order = {}
+    for value in split_data.values():
+        for folder, index in value["labels"].items():
+            if folder in class_order and class_order[folder] != index:
+                raise ValueError("Class folder indices must match across all three datasets")
+            class_order[folder] = index
+    splits = {role: _split_metadata(value, split_inputs[role][0], role) for role, value in split_data.items()}
+    config = request.get("quantization", {"calibration_method": "MinMax", "per_channel": True})
+    candidates, profiles, artifacts, layers = [], [], [], []
+    baseline_path, int8_path = output_dir / "fp32.onnx", output_dir / "static-int8.onnx"
+    fixed_config = {"runtime": "onnxruntime", "execution_provider": "CPUExecutionProvider", "graph_optimization": "ORT_ENABLE_ALL",
+                    "threads": settings["threads"], "inter_op_threads": 1, "execution_mode": "ORT_SEQUENTIAL"}
+    baseline = {"id": "fp32", "name": "FP32 ONNX baseline", "candidate_type": "baseline", "precision": "FP32", "format": "onnx",
+                "status": "pending", "failure": None, "artifact_sha256": None, "configuration": {**fixed_config, "export_optimize": True if source["format"] == "pt2" else None},
+                "validation_metrics": None, "test_metrics": None}
+    quantized = {"id": "static_int8", "name": "Static INT8 ONNX (QDQ)", "candidate_type": "static_quantization", "precision": "INT8 QDQ with floating-point operations",
+                 "format": "onnx", "status": "pending", "failure": None, "artifact_sha256": None,
+                 "configuration": {**fixed_config, "quant_format": "QDQ", "activation_type": "QInt8", "weight_type": "QInt8", "op_types": q.OP_TYPES,
+                                   "reduce_range": False, "shape_inference": True, "preprocess_graph_optimization": False, "WeightSymmetric": True, **config},
+                 "validation_metrics": None, "test_metrics": None}
+    candidates.extend([baseline, quantized])
+    started, torch, old_threads = time.perf_counter(), None, None
+
+    def fail(candidate, stage, exc):
+        message = str(exc).replace(str(output_dir), "[experiment]").replace(str(source_path), "[source model]")
+        candidate.update(status="failed", failure={"stage": stage, "type": type(exc).__name__, "message": message[:1000]})
+
+    def register(candidate, path, conversion_seconds):
+        infer, graph = onnx_session(path, settings["threads"])
+        q.require_fp32(graph) if candidate is baseline else None
+        infer = checked(infer, spec)
+        infer(split_inputs["calibration"][0][0])
+        artifact = b._artifact(candidate["id"], "onnx", path)
+        artifacts.append(artifact)
+        candidate.update(status="built", artifact_sha256=artifact["sha256"], size_bytes=artifact["size_bytes"],
+                         conversion_seconds=conversion_seconds, inventory=q.quantization_inventory(graph))
+        profiles.append({"profile": candidate["id"], "label": candidate["name"], "path": path, "infer": infer,
+                         "conversion_seconds": conversion_seconds, "candidate": candidate})
+        for i, node in enumerate(graph.graph.node):
+            layers.append({"profile": candidate["id"], "name": node.name or f"node_{i}", "operation": node.op_type,
+                           "status": "unmapped", "mae": None, "max_abs": None,
+                           "detail": "Operator inventory only. Quantized intermediate correspondence and layer sensitivity are not established in this milestone."})
+
+    try:
+        if source["format"] == "pt2":
+            import torch
+            old_threads = torch.get_num_threads()
+            torch.set_num_threads(settings["threads"])
+            ep = torch.export.load(str(source_path))
+            module = ep.module()
+            def reference(value):
+                with torch.no_grad():
+                    return _single(module(torch.from_numpy(value)))
+            reference = checked(reference, spec)
+            copied = output_dir / "reference.pt2"
+            shutil.copyfile(source_path, copied)
+            artifacts.append(b._artifact("pytorch", "pt2", copied))
+            profiles.append({"profile": "pytorch", "label": "Original PyTorch reference", "path": copied, "infer": reference,
+                             "conversion_seconds": None})
+            try:
+                baseline["incremental_build_seconds"] = _export(ep, torch.from_numpy(split_inputs["calibration"][0][0]), baseline_path, True)
+                register(baseline, baseline_path, baseline["incremental_build_seconds"])
+            except Exception as exc:
+                fail(baseline, "build_or_runtime_validation", exc)
+        else:
+            shutil.copyfile(source_path, baseline_path)
+            try:
+                baseline["incremental_build_seconds"] = None
+                register(baseline, baseline_path, None)
+            except Exception as exc:
+                fail(baseline, "baseline_validation", exc)
+        if baseline["status"] == "built":
+            try:
+                seconds, _ = q.build_static_int8(baseline_path, int8_path, split_inputs["calibration"][0], config)
+                quantized["incremental_build_seconds"] = seconds
+                quantized["dependency_build_seconds"] = baseline.get("conversion_seconds") or 0
+                register(quantized, int8_path, seconds + quantized["dependency_build_seconds"])
+                cache = int8_path.with_name("calibration-ranges.json")
+                if cache.is_file():
+                    artifact = b._artifact("calibration_ranges", "json", cache)
+                    artifact["role"] = "calibration_statistics"
+                    artifacts.append(artifact)
+                    quantized["calibration_cache_sha256"] = artifact["sha256"]
+            except Exception as exc:
+                fail(quantized, "quantization_or_runtime_validation", exc)
+        else:
+            fail(quantized, "dependency", ValueError("FP32 baseline failed; quantization was not attempted"))
+
+        # All transformation parameters are fixed before validation or test evaluation.
+        metrics, predictions = [], []
+        reference_profile = profiles[0] if profiles else None
+        valid_profiles = list(profiles)
+        for role in ("validation", "test"):
+            arrays, labels = split_inputs[role]
+            reference_outputs = [reference_profile["infer"](x) for x in arrays] if reference_profile else []
+            for profile in list(valid_profiles):
+                candidate = profile.get("candidate")
+                try:
+                    metric, per_image = evaluate_profile(profile, arrays, reference_outputs, labels, split_data[role], settings)
+                    metric.update(peak_ram_bytes=None, device_latency_ms=None,
+                                  latency_mean_ms=None, latency_p50_ms=None, latency_p95_ms=None, latency_samples_ms=None,
+                                  reference_profile=reference_profile["profile"], evaluation_split=role)
+                    _provenance(metric, role)
+                    if candidate:
+                        candidate[role + "_metrics"] = metric
+                    if role == "test":
+                        metrics.append(metric)
+                        predictions.extend(per_image)
+                except Exception as exc:
+                    if not candidate:
+                        raise
+                    fail(candidate, role + "_evaluation", exc)
+                    valid_profiles.remove(profile)
+            baseline_metrics = baseline.get(role + "_metrics")
+            if baseline_metrics:
+                for candidate in candidates:
+                    value = candidate.get(role + "_metrics")
+                    if value:
+                        value["accuracy_delta_vs_fp32_pp"] = value["accuracy_pct"] - baseline_metrics["accuracy_pct"]
+                        _provenance(value, role)
+        if valid_profiles:
+            timing_failures = {}
+            timings = b._time_profiles([(p["profile"], p["infer"], split_inputs["test"][0][0]) for p in valid_profiles], settings, timing_failures)
+            for metric in metrics:
+                metric.update(timings.get(metric["profile"], {}))
+                if metric["profile"] in timing_failures:
+                    exc = timing_failures[metric["profile"]]
+                    metric["benchmark_failure"] = str(exc)[:1000]
+                    candidate = next((c for c in candidates if c["id"] == metric["profile"]), None)
+                    if candidate:
+                        fail(candidate, "host_benchmark", exc)
+                _provenance(metric, "test")
+        for candidate in candidates:
+            if candidate["status"] == "built":
+                candidate["status"] = "completed"
+        fp32 = next((m for m in metrics if m["profile"] == "fp32"), None)
+        int8 = next((m for m in metrics if m["profile"] == "static_int8"), None)
+        if fp32:
+            for metric in metrics:
+                metric["accuracy_delta_vs_fp32_pp"] = metric["accuracy_pct"] - fp32["accuracy_pct"]
+                _provenance(metric, "test")
+        if fp32 and int8:
+            delta = int8["accuracy_pct"] - fp32["accuracy_pct"]
+            summary = {"conclusion": f"Static INT8 versus FP32: {delta:+.6g} percentage points on the held-out test set. Inspect size and host latency before choosing a deployment configuration; no automatic winner is selected.",
+                       "accuracy_delta_pp": delta, "latency_delta_ms": int8["latency_p50_ms"] - fp32["latency_p50_ms"] if int8["latency_p50_ms"] is not None and fp32["latency_p50_ms"] is not None else None,
+                       "size_delta_bytes": int8["size_bytes"] - fp32["size_bytes"]}
+        else:
+            summary = {"conclusion": "FP32/INT8 comparison is incomplete. Failed candidates and their reasons are retained; no deployment recommendation is established."}
+        for metric in metrics:
+            row = next((x for x in predictions if x["profile"] == metric["profile"]), None)
+            if row:
+                layers.append({"profile": metric["profile"], "name": "output.logits", "operation": "ClassifierOutput", "sample_index": 0,
+                               "status": "pass" if row["within_tolerance"] else "drift", "mae": row["mae"], "max_abs": row["max_abs"],
+                               "detail": f"Final output on the first test image compared to {metric['reference_profile']}. This is not a layer root-cause diagnosis."})
+        return {"schema_version": 3, "source": "measured", "experiment_type": "fp32_static_int8", "model": spec,
+                "created_at": datetime.now(timezone.utc).isoformat(), "dataset": splits["test"], "datasets": splits,
+                "summary": summary, "selection": None, "test_data_used_for_selection": False,
+                "search": {"candidate_limit": 2, "attempted_candidates": 2, "automatic_selection": False, "elapsed_seconds": time.perf_counter() - started},
+                "accuracy_resolution_pp": 100 / dataset["image_count"], "candidates": candidates,
+                "environment": {"benchmark_scope": "host_cpu", "platform": platform.platform(), "architecture": platform.machine(),
+                                "processor": platform.processor() or "not reported", "logical_cpus": os.cpu_count(),
+                                "python": platform.python_version(), "versions": _versions(), "settings": settings, "provider": "CPUExecutionProvider"},
+                "target": b._target(request["target"], "onnx"), "metrics": metrics, "layers": layers, "predictions": predictions,
+                "artifacts": artifacts, "edge_results": [],
+                "methodology": ["Fixed FP32 and static S8S8 QDQ configurations; standard PyTorch ONNX exporter optimize=True when source is PT2. No additional FP32 graph rewriting.",
+                                "Only calibration inputs determine INT8 ranges. Shape inference precedes quantization; graph optimization during preprocessing is disabled.",
+                                "Calibration, validation and held-out test archives and exact preprocessed images must be disjoint. Identical declared preprocessing and class order are used.",
+                                "Configurations are fixed before validation and test evaluation. Validation metrics are recorded; no candidate is selected or tuned using test results.",
+                                "Accuracy and output metrics cover every image of the corresponding split. Numerical reference is PyTorch for PT2 uploads or the uploaded FP32 ONNX baseline otherwise.",
+                                "Both ONNX sessions use CPUExecutionProvider, ORT_ENABLE_ALL, sequential execution and identical thread counts.",
+                                "Latency measures one fixed test image with warm-ups and rotating profile order. Decode, preprocessing, calibration, conversion and diagnostics are excluded; raw samples are saved.",
+                                "Conversion seconds include the FP32 dependency export plus each candidate's transformation; incremental and dependency times are retained separately."],
+                "limitations": ["A QDQ graph can retain floating-point operations. Reported coverage describes graph boundaries, not a hardware kernel execution trace or fully integer firmware.",
+                                "Quantized layer mapping, sensitivity search, mixed precision and automatic constraint selection are future milestones.",
+                                "Imported ONNX cannot establish original PyTorch conversion loss; it can establish quantization differences against its FP32 baseline.",
+                                f"One changed prediction = {100 / dataset['image_count']:.6g} pp. Small datasets are smoke tests, not reliable model-quality evidence." if dataset["image_count"] < 300 else f"One changed prediction = {100 / dataset['image_count']:.6g} pp; this is sample accuracy, without a statistical significance claim.",
+                                "Host timings are not ESP32 or Raspberry Pi timings. No physical-device latency or peak RAM is measured. Serialized bytes are not runtime RAM or total firmware flash.",
+                                "Equal, slower, larger and less accurate candidates remain visible. A 0.001 pp accuracy step needs at least 100,000 test images; this bounded prototype does not support that scale."]}
+    finally:
+        if torch is not None and old_threads is not None:
+            torch.set_num_threads(old_threads)
 
 
 def _export(ep, sample, path, optimize):
@@ -217,6 +488,8 @@ def _diagnostics(ep, first, profiles, spec, settings):
 
 
 def run_developer_benchmark(request, dataset, output_dir):
+    if request.get("strategy") == "quantization_compare":
+        return _run_quantization_comparison(request, dataset, output_dir)
     import numpy as np
     settings = b._settings(request)
     source = request["_model"]
@@ -324,31 +597,15 @@ def run_developer_benchmark(request, dataset, output_dir):
         timings = b._time_profiles([(p["profile"], p["infer"], arrays[0]) for p in profiles], settings)
         metrics, predictions = [], []
         for p in profiles:
-            metric = b._evaluate(p["infer"], arrays, reference_outputs, labels, settings, np)
-            outputs = metric.pop("outputs")
-            for i, (out, ref, label) in enumerate(zip(outputs, reference_outputs, labels)):
-                diff = np.abs(out.astype(np.float64) - ref.astype(np.float64))
-                predictions.append({"profile": p["profile"], "sample_index": i, "image": dataset["entries"][i]["path"], "label": label,
-                                    "prediction": int(out.argmax()), "reference_prediction": int(ref.argmax()), "max_abs": float(diff.max()),
-                                    "within_tolerance": bool(np.allclose(out, ref, atol=settings["atol"], rtol=settings["rtol"]))})
-            if ep is None:
-                for key in ("accuracy_delta_pp", "agreement_pct", "output_mae", "output_max_abs", "within_tolerance", "tolerance_failure_count"):
-                    metric[key] = None
-            metric.update(profile=p["profile"], label=p["label"], conversion_seconds=p["conversion_seconds"], size_bytes=p["path"].stat().st_size, **timings[p["profile"]])
+            metric, per_image = evaluate_profile(p, arrays, reference_outputs, labels, dataset, settings, ep is not None)
+            predictions.extend(per_image)
+            metric.update(**timings[p["profile"]])
             metrics.append(metric)
-        if ep is None:
-            for item in predictions:
-                item.update(reference_prediction=None, max_abs=None, within_tolerance=None)
         summary = comparison_summary(metrics[1], metrics[2]) if ep is not None else {"conclusion": "Measured uploaded classifier only. No original PyTorch reference: conversion loss and converter superiority cannot be established."}
         if ep is not None:
             summary["output_mae_delta"] = metrics[2]["output_mae"] - metrics[1]["output_mae"]
             summary["output_max_abs_delta"] = metrics[2]["output_max_abs"] - metrics[1]["output_max_abs"]
-        versions = {}
-        for name in ("torch", "onnx", "onnxruntime", "numpy", "Pillow", "ai-edge-litert", "litert-torch"):
-            try:
-                versions[name] = importlib.metadata.version(name)
-            except importlib.metadata.PackageNotFoundError:
-                pass
+        versions = _versions()
         return {"schema_version": 2, "source": "measured", "created_at": datetime.now(timezone.utc).isoformat(),
                 "model": spec, "dataset": {k: dataset[k] for k in ("id", "name", "sha256", "image_count", "class_count")},
                 "summary": summary, "selection": selection, "accuracy_resolution_pp": 100 / len(labels),
@@ -365,7 +622,7 @@ def run_developer_benchmark(request, dataset, output_dir):
                 "limitations": ["Custom classifiers currently require one fixed batch-one float32 image input and one finite [1, class_count] score output; imported TFLite also supports per-tensor int8/uint8 quantization.",
                                 "ONNX and TFLite uploads alone do not provide evidence of conversion loss. Upload PT2 to compare against PyTorch.",
                                 "Results may be equal or worse. This is an orchestration and selection algorithm built on standard exporters, not a new low-level compiler.",
-                                f"Accuracy step on this dataset is {100 / len(labels):.6g} percentage points. A 0.001 pp step would require at least 100,000 test images; this prototype accepts up to 200.",
+                                f"Accuracy step on this dataset is {100 / len(labels):.6g} percentage points. A 0.001 pp step would require at least 100,000 test images; this prototype accepts up to 1,000, subject to the preprocessing memory budget.",
                                 "Small latency differences can be timer/OS noise; inspect raw timing samples and repeat independent runs. No significance claim is made.",
                                 "Host CPU timings are not ESP32 or Raspberry Pi timings. Physical results and provider estimates are stored separately.",
                                 "No peak process RAM or energy measurement. Stored bytes and tensor arena usage are different quantities."]}

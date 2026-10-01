@@ -21,4 +21,7 @@ def capabilities(request: Request) -> dict:
         "imported_tflite_execution": __import__("importlib.util", fromlist=["find_spec"]).find_spec("ai_edge_litert") is not None,
         "hardware_benchmarks": True,
         "supported_uploads": ["pt2", "onnx", "tflite"],
+        "precision_experiments": {"strategies": ["fp32_static_int8"], "sources": ["pt2", "fp32_onnx"],
+                                  "dataset_roles": ["calibration", "validation", "test"], "max_candidates": 2,
+                                  "automatic_selection": False},
     }

@@ -1,4 +1,4 @@
-# Local API — version 0.4
+# Local API — version 0.5
 
 Base: `/api/v1`. The desktop engine binds a random loopback port and requires its private session cookie/header. Use the CLI for ordinary scripting without needing desktop session credentials. The standalone development server binds `127.0.0.1:8000`.
 
@@ -30,8 +30,21 @@ Run request:
 
 `fixed_profiles` is the default. Fidelity search requires uploaded PT2 + ONNX and separate calibration data. Preset IDs `mobilenet_v2` and `resnet18` remain supported with fixed profiles. Imported ONNX/TFLite must use their existing format and do not manufacture a PyTorch reference. Limits: warm-ups1–50, timed runs3–200, threads1–8, finite tolerances0–1.
 
+FP32/static-INT8 experiment request (uploaded PT2 or **FP32 ONNX**, ONNX output):
+
+```json
+{"model_id":"model_returned_by_upload","format":"onnx","target":"raspberry_pi","dataset_id":"ds_test","strategy":"quantization_compare","calibration_dataset_id":"ds_calibration","validation_dataset_id":"ds_validation","quantization":{"calibration_method":"MinMax","per_channel":true},"settings":{"atol":0.0001,"rtol":0.001,"warmup_runs":3,"measured_runs":10,"threads":1}}
+```
+
+All three IDs/archive hashes and preprocessed image sets must be separate.
+Calibration methods: `MinMax`, `Entropy`, `Percentile`; `per_channel` is a strict
+boolean. Unknown options are rejected. Reports include `candidates` (including
+failures), `datasets` by role, validation/test metrics, raw timings and
+`provenance`. No automatic candidate selection occurs. See
+[precision methodology](PRECISION-EXPERIMENTS.md).
+
 Firmware observation protocol: `edgelens.esp32.v1`, `package_id`, model/input SHA256, chip, IDF version, CPU MHz, arena used/capacity bytes, warm-up count, `samples_us`, output score vector. Values must match the saved manifest and be finite. Unknown fields are rejected. Hardware records preserve raw samples and capture/import source. This is report validation, not hardware attestation.
 
 Edge Impulse submission: `artifact_index`, positive `project_id`, exact supported MCU `device`, transient `api_key`, `consent_upload:true`. Refresh: `{"api_key":"..."}`. These actions use only `https://studio.edgeimpulse.com/v1/api`. Redirects are disabled; keys and request bodies are not stored in SQLite. Provider results have `measurement_scope:provider_analysis`.
 
-SQLite schema2 adds `custom_models` and `edge_records` without replacing v1 datasets/runs/normalized rows. API startup marks interrupted jobs failed. No retry synthesizes successful measurements. Model artifacts remain in the data directory; public report paths are sanitized.
+SQLite migrations preserve old data: schema 2 adds `custom_models`/`edge_records`, and schema 3 adds `run_candidates`/`run_datasets`. API startup marks interrupted jobs failed. No retry synthesizes successful measurements. Model artifacts remain in the data directory; public report paths are sanitized.

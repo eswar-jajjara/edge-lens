@@ -1,5 +1,33 @@
 # Verification — 24 September 2026, version 0.4
 
+## Phase 1 — source version 0.5.0
+
+- Backend: 50 tests, 49 passed, 1 optional pretrained smoke test skipped. Real
+  PT2/ONNX static QDQ, MinMax/Entropy/Percentile calibration, per-channel/per-tensor
+  weights, overlap rejection, failed-candidate retention and SQLite migration 3
+  are covered. Existing TFLite/ESP32 report behavior still passes.
+- Frontend: 12 API tests passed; JavaScript/assets and desktop entry syntax passed.
+  In this restricted workspace, Node tests used `--test-isolation=none` because
+  child-process test spawning was denied. Windows CI uses ordinary `npm test`.
+- An actual trained synthetic colour classifier was exported and evaluated with
+  100 calibration, 100 validation and 300 test images using the CLI. Both candidates
+  completed, exported reports and were stored with separate dataset hashes and
+  calibration statistics. Accuracy was equal; INT8 was larger and slightly slower
+  in this one host run. This is workflow evidence, not real-world model-quality
+  evidence or a performance/significance claim.
+- The desktop interface's precision controls and separate dataset roles were
+  checked in a temporary local preview. Native Electron startup in this agent's
+  sandbox was blocked by Windows IPC permissions. The existing
+  [Windows desktop workflow](https://github.com/eswar-jajjara/edge-lens/actions/workflows/windows-desktop.yml)
+  now checks the native precision controls, runs real QDQ tests, and checks the
+  relocated portable runtime on a Windows runner. Inspect its result for the
+  source commit you use.
+
+Phase 1 has fixed FP32/static-INT8 experiments. Layer sensitivity, mixed-precision
+search, automatic constraint selection and physical Pi measurements are not
+implemented by this update. No new portable release is published by this source
+change; v0.4.1 remains the earlier download.
+
 ## 1 October 2026 update — version 0.4.1
 
 - Fresh Windows source installation from a Git archive in a path containing spaces passed on a hosted Windows runner with Python 3.12 x64 and Node.js 22. The setup creates its own virtual environment, installs the pinned CPU packages and downloads the locked Electron executable.

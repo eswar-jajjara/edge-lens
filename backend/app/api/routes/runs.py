@@ -59,6 +59,14 @@ def submit_run(payload: CreateRunRequest, request: Request):
         calibration = repository.get_dataset(payload.calibration_dataset_id) if payload.calibration_dataset_id else None
         if calibration is None or calibration["sha256"] == dataset["sha256"]:
             raise HTTPException(422, "Select a separate calibration dataset. Test data cannot select a converter.")
+    if payload.strategy == "quantization_compare":
+        if not custom or custom["format"] not in {"pt2", "onnx"}:
+            raise HTTPException(422, "FP32/INT8 experiments require an uploaded PT2 or FP32 ONNX classifier")
+        split_data = [dataset, repository.get_dataset(payload.calibration_dataset_id), repository.get_dataset(payload.validation_dataset_id)]
+        if any(value is None for value in split_data):
+            raise HTTPException(422, "Upload and select calibration, validation and test datasets")
+        if len({value["sha256"] for value in split_data}) != 3:
+            raise HTTPException(422, "Calibration, validation and test archives must be separate")
     runtime = request.app.state.capability_provider().get(payload.format, {})
     if custom and custom["format"] == "tflite":
         from app.services.benchmark import _present

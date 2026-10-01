@@ -16,7 +16,7 @@ Total strategy time includes two exports, session creation and calibration execu
 - Numerical differences compare raw class-score vectors without adding a softmax. Tolerance uses `abs(candidate - reference) <= atol + rtol * abs(reference)` as implemented by NumPy's comparison call.
 - CPU timing warms each profile, rotates profile order between rounds and records raw values, median and p95. One fixed preprocessed image is used. Loading, preprocessing, conversion and diagnostic extraction are outside the timing loop; runtime calls/output copy/signature checks are included for uploaded classifiers.
 - All profiles use configured CPU thread counts, CPU execution and the same test images. Concurrent external workloads and OS scheduling can affect results. Independent repetitions are needed for tiny timing claims.
-- One changed label prediction shifts accuracy by `100/N` percentage points. Current dataset limit is 200 images; a 0.001 pp accuracy step is outside this prototype's resolution.
+- One changed label prediction shifts accuracy by `100/N` percentage points. Current archive limit is 1,000 images, subject to a 512 MiB preprocessing budget; a 0.001 pp accuracy step is outside this prototype's resolution.
 - Serialized model bytes are not peak process RAM. No host peak-memory or energy claim is made.
 
 ## Per-operation evidence

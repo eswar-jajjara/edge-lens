@@ -198,7 +198,7 @@ class DatasetTests(TemporaryDataTest):
                 self.assert_rejected(archive_bytes(labels=labels))
 
     def test_too_few_too_many_images_and_non_images_rejected(self):
-        for entries in ([('cat/a.png', PNG)], [(f"cat/{index}.png", PNG) for index in range(201)],
+        for entries in ([('cat/a.png', PNG)], [(f"cat/{index}.png", PNG) for index in range(1001)],
                         [('cat/a.png', PNG), ('cat/code.py', b'print(1)')],
                         [('cat/a.png', b'not an image'), ('dog/b.png', PNG)]):
             with self.subTest(count=len(entries)):

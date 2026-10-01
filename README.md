@@ -1,10 +1,12 @@
-# EdgeLens — Model Conversion Studio 0.4.1
+# EdgeLens — Model Conversion Studio 0.5.0
 
 A Windows desktop developer tool for validating image-classifier conversion and preparing real ESP32 benchmarks. Electron starts a private local Python engine automatically; SQLite stores models, datasets, metrics, layer findings and reports. Model binaries stay on disk with SHA256 metadata in SQLite.
 
 ## Open it
 
 **For your teammate:** download [the Windows x64 portable ZIP from v0.4.1](https://github.com/eswar-jajjara/edge-lens/releases/tag/v0.4.1), extract the entire folder and open `EdgeLens.exe`. Python, Node.js and a GPU are not required separately. Each laptop keeps its own data under `%APPDATA%/EdgeLens/data`.
+
+The v0.4.1 portable build predates the new FP32/static-INT8 experiments. Use current GitHub source and the setup below for version 0.5.0.
 
 **From GitHub source:** install 64-bit Python 3.12 and 64-bit Node.js 22.12+, double-click `setup-windows.cmd` once, then `start-desktop.cmd`. Setup installs the tested dependency versions and checks a real tiny PT2/ONNX conversion. `check-windows.cmd` verifies an existing setup. See [the teammate setup guide](docs/TEAM-SETUP.md) for prerequisites, diagnostics and sharing experiments.
 
@@ -14,8 +16,9 @@ A Windows desktop developer tool for validating image-classifier conversion and 
 
 - Upload your own `.pt2`, single-file `.onnx` or `.tflite` image classifier with preprocessing and class-count settings. Supported signatures are fixed batch-one, one image input and one class-score output. Only load trusted exports; this is not an untrusted-model sandbox.
 - Compare a PT2 reference against standard ONNX export and an **EdgeLens fidelity-guided conversion strategy**, using separate calibration and held-out datasets. Retain every candidate and the selection rationale; equal/worse results are valid.
+- Compare **FP32 ONNX versus static INT8 QDQ** from PT2 or FP32 ONNX uploads. Keep calibration, validation and test datasets separate; save exact settings, observed quantization coverage, per-metric provenance and failed candidates. See [precision experiments and the reproducible demo](docs/PRECISION-EXPERIMENTS.md).
 - Benchmark imported ONNX/TFLite models independently. Without PyTorch reference data, conversion loss is explicitly unavailable.
-- Measure labelled top-1 accuracy, prediction agreement, output MAE/max error, conversion/search time, median/p95 host latency and serialized size.
+- Measure labelled top-1 accuracy, prediction agreement, output MAE/max error, conversion/search time, mean/median/p95 host latency and serialized size.
 - Inspect conservative per-operation mappings, an unoptimized diagnostic graph, per-image predictions, runtime versions, hashes and exact settings. Unmapped operations remain unverified.
 - Generate an ESP-IDF package for a compatible small TFLite model; capture matching ESP32 USB reports or import their JSON. Physical device results are separate from host metrics. EdgeLens does not flash boards automatically.
 - Optionally upload a selected TFLite artifact to Edge Impulse for resource profiling. Explicit user action is required; keys are not persisted and provider estimates stay separate from real-board measurements.
@@ -46,7 +49,7 @@ cd ..
 npm run desktop:package
 ```
 
-The custom integration suite runs tiny real PT2/ONNX/FP32 and int8 TFLite classifiers using synthetic fixtures. It verifies behavior, not project accuracy. The optional full pretrained MobileNetV2 smoke test uses `EDGELENS_ML_SMOKE=1` and may download official weights.
+The custom integration suite runs tiny real PT2/ONNX, static INT8 QDQ, and FP32/int8 TFLite classifiers using synthetic fixtures. It verifies behavior, not project accuracy. The optional full pretrained MobileNetV2 smoke test uses `EDGELENS_ML_SMOKE=1` and may download official weights.
 
 Packaging copies Python sources because the exporter inspects them. This is an unsigned portable development build, not a signed installer. Fresh Windows setup, native desktop startup and a relocated portable runtime are verified in [Windows CI](https://github.com/eswar-jajjara/edge-lens/actions/runs/36851712108); see [verification](docs/VERIFICATION.md). Use the setup/runtime check on each teammate's laptop.
 

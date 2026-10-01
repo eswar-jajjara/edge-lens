@@ -1,5 +1,5 @@
 from typing import Annotated, Literal
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class RunSettings(BaseModel):
@@ -11,12 +11,32 @@ class RunSettings(BaseModel):
     threads: int = Field(default=1, ge=1, le=8, strict=True)
 
 
+class QuantizationSettings(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    calibration_method: Literal["MinMax", "Entropy", "Percentile"] = "MinMax"
+    per_channel: bool = Field(default=True, strict=True)
+
+
 class CreateRunRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     model_id: Annotated[str, Field(min_length=1, max_length=80, pattern=r"^[a-zA-Z0-9_-]+$")]
-    strategy: Literal["fixed_profiles", "fidelity_search"] = "fixed_profiles"
+    strategy: Literal["fixed_profiles", "fidelity_search", "quantization_compare"] = "fixed_profiles"
     calibration_dataset_id: Annotated[str | None, Field(max_length=80, pattern=r"^[a-zA-Z0-9_-]+$")] = None
+    validation_dataset_id: Annotated[str | None, Field(max_length=80, pattern=r"^[a-zA-Z0-9_-]+$")] = None
+    quantization: QuantizationSettings = Field(default_factory=QuantizationSettings)
     format: Literal["onnx", "tflite"]
     target: Literal["raspberry_pi", "esp32"]
     dataset_id: Annotated[str, Field(min_length=1, max_length=80, pattern=r"^[a-zA-Z0-9_-]+$")]
     settings: RunSettings = Field(default_factory=RunSettings)
+
+    @model_validator(mode="after")
+    def check_experiment(self):
+        if self.strategy == "quantization_compare":
+            if self.format != "onnx":
+                raise ValueError("FP32/INT8 experiments require ONNX output")
+            split_ids = [self.calibration_dataset_id, self.validation_dataset_id, self.dataset_id]
+            if not all(split_ids) or len(set(split_ids)) != 3:
+                raise ValueError("Select three separate calibration, validation and held-out test datasets")
+        elif self.validation_dataset_id is not None:
+            raise ValueError("A validation dataset is used by the FP32/INT8 experiment strategy")
+        return self

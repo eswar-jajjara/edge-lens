@@ -69,7 +69,7 @@ async function start() {
     { label: 'File', submenu: [{ label: 'Reports', click: () => mainWindow.loadURL(`${origin}/#report`) }, { type: 'separator' }, { label: 'Exit', accelerator: 'Alt+F4', click: () => mainWindow.close() }] },
     { label: 'Edit', submenu: [{ role: 'undo' }, { role: 'redo' }, { type: 'separator' }, { role: 'cut' }, { role: 'copy' }, { role: 'paste' }, { role: 'selectAll' }] },
     { label: 'View', submenu: [{ role: 'resetZoom' }, { role: 'zoomIn' }, { role: 'zoomOut' }, { role: 'togglefullscreen' }] },
-    { label: 'Help', submenu: [{ label: 'About EdgeLens', click: () => dialog.showMessageBox(mainWindow, { title: 'EdgeLens', message: 'EdgeLens · Model Conversion Studio', detail: 'Local Python engine • SQLite reports\nBenchmarks describe this computer. Raspberry Pi and ESP32 are deployment goals.\nTFLite conversion requires a Linux worker.' }) }] },
+    { label: 'Help', submenu: [{ label: 'About EdgeLens', click: () => dialog.showMessageBox(mainWindow, { title: 'EdgeLens', message: `EdgeLens ${app.getVersion()} · Model Conversion Studio`, detail: 'Desktop developer tool • Local Python engine • SQLite experiment reports\nFP32/static INT8 comparison uses separate calibration, validation and test sets.\nBenchmarks describe this computer; device results require matching physical reports.\nTFLite conversion requires a Linux worker.' }) }] },
   ]));
   mainWindow.on('close', event => {
     if (shuttingDown || isSmoke) return;
@@ -86,7 +86,8 @@ async function start() {
   if (isSmoke) {
     const response = await fetch(`${origin}/api/v1/capabilities`, { headers: { 'X-EdgeLens-Session': token } });
     const capabilities = await response.json();
-    const page = await mainWindow.webContents.executeJavaScript('({title:document.title,desktop:window.EDGELENS_CONFIG.desktop,heading:document.querySelector("h1").textContent})');
+    const page = await mainWindow.webContents.executeJavaScript('({title:document.title,desktop:window.EDGELENS_CONFIG.desktop,heading:document.querySelector("h1").textContent,precisionControls:Boolean(document.querySelector("#run-strategy option[value=quantization_compare]")),validationControl:Boolean(document.querySelector("#validation-select"))})');
+    if (!page.desktop || !page.precisionControls || !page.validationControl || !capabilities.precision_experiments) throw new Error('Desktop precision controls or local engine capabilities are missing.');
     console.log(JSON.stringify({ desktop_smoke: 'passed', capabilities, page }));
     shuttingDown = true; app.quit();
   } else mainWindow.show();
