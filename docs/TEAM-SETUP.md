@@ -12,6 +12,8 @@ Use Windows 10/11 **x64**. The portable release and source setup both use the sa
 
 The initial download is large because it includes CPU PyTorch. Allow about 3 GB free disk space for the ZIP and extracted folder. An Internet connection is needed for the download, built-in pretrained model downloads, or optional Edge Impulse profiling. Uploaded local models can be benchmarked without an Internet connection after extraction.
 
+If a runtime check reports a missing DLL or Visual C++ runtime, install or repair the [Microsoft Visual C++ v14 Redistributable for x64](https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist), then reopen EdgeLens. This Windows system dependency is commonly installed already; it is separate from Python/Node.js. Use Microsoft's installer and follow your laptop's normal software permissions.
+
 ## Develop from GitHub source
 
 1. Install [64-bit Python 3.12](https://www.python.org/downloads/windows/) and [64-bit Node.js 22.12 or newer](https://nodejs.org/en/download). Restart the terminal after installation. Python 3.13/3.14 is not the tested runtime for this snapshot.

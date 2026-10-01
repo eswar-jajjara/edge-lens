@@ -1,5 +1,15 @@
 # Verification — 24 September 2026, version 0.4
 
+## 1 October 2026 update — version 0.4.1
+
+- Fresh Windows source installation from a Git archive in a path containing spaces passed on a hosted Windows runner with Python 3.12 x64 and Node.js 22. The setup creates its own virtual environment, installs the pinned CPU packages and downloads the locked Electron executable.
+- A real tiny PT2 export/load and ONNX conversion/inference check passed. The check verifies native TFLite/USB imports and built interface assets, and writes a diagnostic JSON file. Synthetic outputs do not establish project accuracy.
+- Native Electron startup, private Python engine readiness, real runtime capabilities and interface loading passed in [Windows CI](https://github.com/eswar-jajjara/edge-lens/actions/runs/36851255667). The earlier native-startup limitation below describes the restricted local agent session, not this hosted Windows result.
+- The local suite passed 42 backend tests plus 12 frontend tests, with the pretrained download test skipped. FP32/int8 TFLite checks also passed after selecting the installable Windows dependency snapshot.
+- Each laptop starts with its own SQLite workspace. Latency is specific to the machine; sharing source does not synchronize model files or saved history.
+
+The Windows 10/11 x64 distribution still needs a teammate's check on their particular laptop. The earlier ESP32, live Edge Impulse, Linux PT2-to-TFLite conversion and model-quality limitations remain applicable.
+
 ## Executed successfully
 
 - Actual custom PT2 upload and ONNX export with all three calibration candidates; held-out classification, timing, selection evidence, FX-node diagnostics and saved report artifacts.
