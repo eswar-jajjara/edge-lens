@@ -1,0 +1,6 @@
+# Optional Linux-only worker; upstream recommends Python 3.11.
+# Keep this environment separate if dependency resolution differs from ONNX.
+# https://github.com/google-ai-edge/litert-torch
+-r requirements-ml.txt
+litert-torch
+ai-edge-litert

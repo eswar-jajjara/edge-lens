@@ -1,0 +1,19 @@
+appId: com.edgelens.studio
+productName: EdgeLens
+asar: true
+directories:
+  output: release
+files:
+  - desktop/main.cjs
+  - package.json
+extraResources:
+  - from: desktop/engine
+    to: engine
+  - from: dist
+    to: ui
+  - from: desktop/icon.ico
+    to: icon.ico
+win:
+  target: dir
+  signAndEditExecutable: false
+artifactName: EdgeLens-${version}-${arch}.${ext}

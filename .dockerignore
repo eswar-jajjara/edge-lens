@@ -1,0 +1,14 @@
+.git
+.github
+.env
+**/.env
+**/.venv
+**/__pycache__
+**/node_modules
+.cache
+desktop/engine
+release
+dist
+backend/data
+*.zip
+*.log

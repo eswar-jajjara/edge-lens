@@ -1,0 +1,28 @@
+{
+  "name": "edgelens",
+  "version": "0.4.0",
+  "private": true,
+  "description": "Desktop image classification conversion and diagnostic studio",
+  "author": "EdgeLens Capstone Team",
+  "main": "desktop/main.cjs",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "node scripts/dev.mjs",
+    "build": "node scripts/build.mjs",
+    "check": "node scripts/check.mjs",
+    "test": "node --test tests/frontend.test.mjs",
+    "desktop": "npm run build && electron .",
+    "desktop:smoke": "npm run build && electron . --smoke-test",
+    "desktop:engine": "backend\\.venv\\Scripts\\python.exe scripts/prepare-engine.py",
+    "desktop:package": "npm run build && npm run desktop:engine && node scripts/package-desktop.mjs",
+    "docker:up": "docker compose up --build -d",
+    "docker:down": "docker compose down",
+    "desktop:package:builder": "npm run build && npm run desktop:engine && electron-builder --win --dir"
+  },
+  "devDependencies": {
+    "electron": "^44.4.5",
+    "electron-builder": "^26.15.3"
+  }
+}

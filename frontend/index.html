@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>EdgeLens — Conversion benchmark workspace</title>
+<meta name="description" content="Compare image-classification conversions with measured server benchmarks and layer-level diagnostic reports.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Crect width='40' height='40' rx='10' fill='%23101e2c'/%3E%3Cpath d='M10 11h20v5H15v4h12v5H15v4h15' stroke='%239ee5b9' stroke-width='3' fill='none'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="src/styles.css">
+<script src="config.js" defer></script><script src="src/demo-data.js" defer></script><script src="src/api.js" defer></script><script src="src/app.js" defer></script>
+</head>
+<body>
+<aside class="sidebar">
+<a class="brand" href="#overview" aria-label="EdgeLens home"><span class="brand-icon">E<span>↗</span></span> EdgeLens<span class="brand-dot">.</span></a>
+<div class="workspace-label">CONVERSION WORKSPACE</div>
+<nav aria-label="Main navigation">
+<button class="nav-item active" data-page="overview"><span aria-hidden="true">▦</span> Overview</button>
+<button class="nav-item" data-page="diagnostics"><span aria-hidden="true">⌘</span> Layer diagnostics</button>
+<button class="nav-item" data-page="report"><span aria-hidden="true">▤</span> Reports & history</button>
+<button class="nav-item" data-page="edge"><span aria-hidden="true">▣</span> Edge hardware</button></nav>
+<div class="sidebar-project"><span class="project-symbol">P</span><div><strong>Image classification</strong><small>PyTorch → ONNX / TFLite</small></div></div>
+<div class="sidebar-bottom"><span class="outline-tag">MEASURE. COMPARE. UNDERSTAND.</span><p>A clearer view of your<br>model conversions.</p><div class="sidebar-divider"></div><span class="avatar">C2</span><div><strong>Batch C2C-62</strong><small>Research workspace</small></div></div>
+</aside>
+<div class="main-shell">
+<header class="topbar"><div class="breadcrumb">Workspace <span>/</span> <strong id="breadcrumb">Overview</strong></div><span class="demo-indicator" id="environment-label">Illustrative demo</span></header>
+<main>
+<div class="page-heading"><div><div class="eyebrow">MODEL CONVERSION LAB</div><h1 id="page-title">Validation overview</h1><p id="page-description">See what conversion changes. Keep the evidence.</p></div><div class="mode-switch" role="group" aria-label="Workspace mode"><button id="demo-mode" aria-pressed="true">Illustrative demo</button><button id="real-mode" aria-pressed="false">Server benchmark</button></div></div>
+<div class="demo-notice" id="mode-notice"><span class="info-icon" aria-hidden="true">i</span><span><strong>Illustrative data.</strong> All values are fabricated examples. No models are executed or saved.</span></div>
+<div class="error-notice" id="workspace-error" role="alert" hidden></div>
+<div id="run-progress" class="progress-panel" hidden aria-live="polite"><div><strong id="progress-title">Benchmark queued</strong><span class="status neutral">Server CPU</span></div><p id="progress-detail">The server will prepare the model and run the comparison.</p><button class="text-button" id="resume-poll" hidden>Check run status</button></div>
+<div id="overview-page" class="page-panel">
+<section class="panel setup-panel" id="real-setup" hidden>
+<div class="panel-heading"><div><span class="step-kicker">01 / SET UP AN EXPERIMENT</span><h2>Benchmark your conversion</h2><p>Models run on the backend server. Choose an edge device as a deployment goal.</p></div><button class="text-button" id="connect-server">Reconnect ↗</button></div>
+<div id="server-status" class="connection-line" aria-live="polite">Connecting to the benchmark server…</div>
+<details class="developer-upload" id="model-upload-panel"><summary><span class="step-kicker">DEVELOPER MODEL LIBRARY</span><strong>Bring your own classifier</strong><span class="field-help">PyTorch export (.pt2), ONNX or TFLite · up to 100 MiB</span></summary>
+<div class="developer-content"><p class="field-help">A PT2 export supplies the reference for conversion comparisons. An ONNX or TFLite file alone supports accuracy and runtime measurement; original PyTorch conversion loss is unavailable.</p>
+<div class="setup-grid"><label class="field-label">Exported model<input class="full-input" id="model-file" type="file" accept=".pt2,.onnx,.tflite"></label><label class="field-label">Display name<input class="full-input" id="model-name" placeholder="My image classifier"></label><label class="field-label">Number of classes<input class="full-input" id="model-classes" type="number" min="2" max="10000" value="2"></label></div>
+<div class="settings-grid model-settings"><label>Input shape (comma separated)<input id="model-shape" value="1,3,224,224"></label><label>Layout<select class="full-input" id="model-layout"><option>NCHW</option><option>NHWC</option></select></label><label>Pixel scale<input id="model-scale" value="0.003921568627451" type="number" step="any"></label><label>Channel means<input id="model-mean" value="0,0,0"></label><label>Channel std. deviations<input id="model-std" value="1,1,1"></label></div>
+<div class="setup-grid"><label class="field-label">Image resize<select class="full-input" id="model-resize"><option value="stretch">Resize to input dimensions</option><option value="shortest_center_crop">Resize shorter side + center crop</option></select></label><label class="field-label">Shorter side for center crop<input id="model-shorter" class="full-input" type="number" value="256"></label></div>
+<p class="field-help">Use your training preprocessing: (pixel × scale − mean) ÷ std. Supports RGB or grayscale, one fixed batch-one image input, and one [1, classes] score output. Weights-only .pth files need architecture code and must be exported first.</p>
+<label class="check-consent"><input type="checkbox" id="model-trusted"> This is my own trusted model. PT2 loading can execute serialized code; the local runtime is not a security sandbox.</label>
+<button class="button secondary" id="upload-model" type="button">Save model ↑</button><span class="field-help" id="model-upload-status" aria-live="polite"></span></div></details>
+
+<form id="benchmark-form">
+<div class="setup-grid">
+<label class="field-label">Input model<select id="run-model" class="full-input"><option value="mobilenet_v2">MobileNetV2 · ImageNet pretrained</option><option value="resnet18">ResNet18 · ImageNet pretrained</option></select></label>
+<label class="field-label">Conversion format<select id="run-format" class="full-input"><option value="onnx">ONNX</option><option value="tflite">TensorFlow Lite</option></select></label>
+<label class="field-label">Deployment goal<select id="run-target" class="full-input"><option value="raspberry_pi">Raspberry Pi</option><option value="esp32">ESP32</option></select></label>
+</div>
+<p class="field-help" id="model-detail"></p><div class="target-hint" id="target-hint"></div>
+<div class="setup-grid"><label class="field-label">Conversion strategy<select id="run-strategy" class="full-input"><option value="fixed_profiles">Fixed profiles / benchmark existing model</option><option value="fidelity_search">EdgeLens fidelity-guided ONNX conversion</option></select></label><label id="calibration-field" class="field-label" hidden>Calibration dataset (separate from test)<select id="calibration-select" class="full-input"></select></label></div>
+<p class="field-help">Fidelity search requires an uploaded PT2 model, ONNX output and separate calibration images. It may select the standard converter when no better numerical match is found.</p>
+<div class="dataset-area"><div><label class="field-label" for="dataset-select">Labelled image dataset</label><select id="dataset-select" class="full-input"><option value="">Upload a dataset to begin</option></select><p class="field-help" id="dataset-description">Accuracy needs labelled images with ImageNet class IDs.</p></div><div class="upload-area"><label class="field-label" for="dataset-file">Upload dataset ZIP</label><input type="file" id="dataset-file" accept=".zip,application/zip"><button type="button" class="button secondary" id="upload-dataset">Upload dataset ↑</button><span class="field-help" id="upload-status" aria-live="polite"></span></div></div>
+<details class="dataset-guide"><summary>How to prepare your dataset</summary><p>Use 2–200 JPG or PNG images in class folders, plus a root <code>labels.json</code> mapping each folder to its model class index (0 to class_count − 1). ZIP size: up to 50 MB. Use real validation images that were not used for training.</p><pre>images.zip
+├── labels.json  →  {"tabby": 281, "golden_retriever": 207}
+├── tabby/
+│   └── image-01.jpg
+└── golden_retriever/
+    └── image-02.jpg</pre><p>Use your model’s exact output class order. The sample presets use ImageNet indices; a custom two-class model might use {"cat": 0, "dog": 1}. Upload a separate calibration ZIP for fidelity-guided conversion.</p></details>
+<details class="advanced-settings"><summary>Benchmark settings</summary><div class="settings-grid"><label>Warm-up runs<input id="warmup-runs" type="number" min="1" max="50" value="3" required></label><label>Measured runs<input id="measured-runs" type="number" min="3" max="200" value="10" required></label><label>CPU threads<input id="cpu-threads" type="number" min="1" max="8" value="1" required></label><label>Absolute tolerance<input id="atol" type="number" min="0" max="1" step="any" value="0.0001" required></label><label>Relative tolerance<input id="rtol" type="number" min="0" max="1" step="any" value="0.001" required></label></div></details>
+<div class="run-actions"><p id="runtime-note">Checking runtime availability…</p><button class="button primary" type="submit" id="start-benchmark" disabled>Run server benchmark <span aria-hidden="true">→</span></button></div>
+</form>
+</section>
+<section id="empty-results" class="panel empty-state" hidden><span class="empty-symbol">⌁</span><h2>Your measured comparison will appear here</h2><p>Upload labelled images and run an experiment, or open a saved report.<br>Unmeasured values stay empty until the run finishes.</p></section>
+<div id="result-overview">
+<section class="run-strip"><div class="model-mark" aria-hidden="true">⬡</div><div class="run-name"><span class="step-kicker">ACTIVE COMPARISON</span><strong id="active-model">MobileNetV2</strong></div><div class="run-meta"><span id="active-dataset">Example image set</span><span id="active-location">Illustrative server CPU</span></div><div class="run-state"><span class="status neutral" id="run-status">Illustrative</span><small id="run-id">DEMO · NOT MEASURED</small></div></section>
+<section class="metric-grid" aria-label="Comparison summary">
+<article class="metric"><div class="metric-label">Model accuracy <span>◎</span></div><div class="metric-value" id="reference-accuracy">—</div><div class="metric-note">Top-1 predictions against true labels</div></article>
+<article class="metric"><div class="metric-label">Accuracy difference <span>≈</span></div><div class="metric-value" id="accuracy-difference">—</div><div class="metric-note">Configured minus standard · percentage points</div></article>
+<article class="metric"><div class="metric-label">Inference latency <span>ϟ</span></div><div class="metric-value" id="configured-latency">—</div><div class="metric-note">Selected / imported CPU median · milliseconds</div></article>
+<article class="metric"><div class="metric-label">Layer coverage <span>⌕</span></div><div class="metric-value" id="layer-coverage">—</div><div class="metric-note" id="layer-coverage-note">Numerically compared / reported layers</div></article>
+</section>
+<div class="analysis-grid">
+<section class="panel chart-panel"><div class="panel-heading"><div><h2>Inference latency</h2><p>Median execution time per inference</p></div><span class="subtle-pill" id="chart-label">Illustrative server CPU</span></div><div id="performance-chart" class="benchmark-chart"></div><div class="chart-foot"><span>Warm-up precedes timed runs</span><strong>Milliseconds · lower is faster</strong></div></section>
+<section class="panel target-panel"><div class="panel-heading"><div><h2>Deployment goal</h2><p>Hardware compatibility is a separate check</p></div><span class="target-icon" aria-hidden="true">▣</span></div><div class="target-content"><h3 id="target-name">Raspberry Pi</h3><span class="status neutral" id="target-status">Not tested on device</span><ul id="target-notes"></ul><div class="device-latency"><span>Actual device latency</span><strong>Not measured</strong></div></div></section>
+</div>
+<section class="panel comparison-panel"><div class="panel-heading"><div><h2>Conversion comparison</h2><p>Same images. Same reference. Differences measured without assuming an improvement.</p></div><button class="text-button" data-export="csv">Export CSV ↗</button></div><div class="table-scroll"><table><thead><tr><th>Profile</th><th>Top-1 accuracy</th><th>Δ vs reference <span class="th-unit">pp</span></th><th>Prediction agreement</th><th>Median / p95 <span class="th-unit">ms</span></th><th>Conversion <span class="th-unit">s</span></th><th>Size <span class="th-unit">MiB</span></th><th>Output MAE</th></tr></thead><tbody id="comparison-body"></tbody></table></div><div class="table-note">Accuracy uses the dataset labels. Agreement uses supplied PyTorch predictions; imported-only models show no reference comparison. Conversion time is measured separately from inference latency.</div></section>
+<div class="finding-teaser"><div><span class="warning-symbol" aria-hidden="true">i</span><div><strong id="result-summary"></strong><p>Open diagnostics to inspect aligned, changed and unavailable layer comparisons.</p></div></div><button class="button secondary" data-goto="diagnostics">Inspect layers →</button></div>
+</div>
+</div>
+<div id="diagnostics-page" class="page-panel" hidden>
+<section class="panel"><div class="panel-heading"><div><h2>Layer-level evidence</h2><p>Each reported layer retains its comparison status, error values and context.</p></div><span class="subtle-pill" id="layer-count">0 layers</span></div><div class="layer-toolbar"><label class="search-label">Find a layer<input type="search" id="layer-search" placeholder="Layer name or operation…"></label><label class="filter-label">Status<select id="layer-filter"><option value="all">All statuses</option><option value="pass">Within tolerance</option><option value="review">Needs review</option><option value="unmapped">Not compared</option></select></label></div><div id="layer-list"></div></section>
+<section class="panel method-panel"><h2>How to read a layer report</h2><div class="method-grid"><div><span>01</span><h3>Match the boundary</h3><p>Conversions can fuse or remove operations. A missing one-to-one mapping is marked unavailable.</p></div><div><span>02</span><h3>Inspect numerical drift</h3><p>Mean and maximum absolute error describe tensor differences. Tolerance includes absolute and relative terms.</p></div><div><span>03</span><h3>Check the final outcome</h3><p>A changed tensor does not automatically mean a wrong prediction. Read accuracy and agreement alongside it.</p></div></div></section>
+</div>
+<div id="report-page" class="page-panel" hidden>
+<section class="panel history-panel" id="history-panel" hidden><div class="panel-heading"><div><h2>Saved experiments</h2><p>Run requests and reports are stored in SQLite on the server.</p></div><button class="text-button" id="refresh-history">Refresh ↻</button></div><div id="run-history" class="history-list"><p>No saved runs loaded.</p></div></section>
+<section class="panel evidence-panel" id="developer-evidence" hidden><div class="panel-heading"><div><span class="step-kicker">DEVELOPER EVIDENCE</span><h2>Selection and reproducibility</h2><p id="accuracy-resolution"></p></div></div><div class="developer-content"><h3>Converter selection</h3><p id="selection-summary"></p><div id="selection-evidence"></div><h3>Per-image results</h3><p class="field-help">First 20 converted/imported predictions. Full results are included in JSON, CSV and HTML exports.</p><div id="prediction-evidence"></div><details class="dataset-guide"><summary>Hashes, preprocessing and runtime versions</summary><pre id="reproduce-evidence"></pre></details></div></section>
+
+<section class="panel report-panel"><div class="report-heading"><div class="eyebrow">EXPERIMENT RECORD</div><h2 id="report-model">MobileNetV2</h2><p id="report-run-id">DEMO · NOT MEASURED</p><span class="status neutral" id="report-source">Illustrative data</span></div><p id="report-summary"></p><div class="report-grid"><div><h3>Dataset & environment</h3><dl id="report-facts"></dl></div><div><h3>Methodology</h3><ul class="report-list" id="report-methodology"></ul></div></div><div class="report-disclaimer"><strong>Limitations</strong><ul id="report-limitations"></ul></div><h3>Model files</h3><div id="model-artifacts" class="report-exports"></div><h3>Reports</h3><div class="report-exports"><button class="button primary" data-export="html">Save HTML report ↓</button><button class="button secondary" data-export="json">Export JSON ↓</button><button class="button secondary" data-export="csv">Export CSV ↓</button></div></section>
+</div>
+<div id="edge-page" class="page-panel" hidden>
+<section class="panel empty-state" id="edge-empty"><h2>Connect your model to the real board</h2><p>Open a completed TFLite benchmark to prepare firmware and attach USB measurements.<br>ONNX files cannot run directly in TFLite Micro.</p></section>
+<div id="edge-workspace" hidden>
+<section class="panel edge-panel"><div class="panel-heading"><div><span class="step-kicker">ESP32 / PHYSICAL BENCHMARK</span><h2>Prepare. Flash. Measure.</h2><p id="edge-run-label"></p></div><span class="status neutral">USB device reports</span></div>
+<div class="developer-content"><div class="target-hint">Confirm the actual chip before flashing. For a classic ESP32 DevKit / WROOM use the ESP32 target; S3 and C3 need their own targets. EdgeLens prepares files and reads reports. Flashing is a separate ESP-IDF step that replaces existing firmware.</div>
+<p class="field-help" id="edge-format-note"></p><div class="setup-grid"><label class="field-label">TFLite model to test<select class="full-input" id="edge-artifact"></select></label><label class="field-label">Tensor arena budget (KiB)<input class="full-input" id="arena-kib" type="number" min="16" max="2048" value="96"></label><div class="field-label">1 · Prepare firmware<button class="button secondary" id="prepare-edge">Prepare & save ZIP ↓</button></div></div>
+<p class="field-help">The ZIP includes the model, one preprocessed test image, hashes, ESP-IDF source and instructions. Memory allocation and supported operators still need validation on your board. A small int8 classifier is a practical starting point.</p>
+<div class="setup-grid"><label class="field-label">2 · Build / flash, then select the package<select class="full-input" id="edge-package"></select></label><button class="button secondary" id="download-edge">Save selected ZIP ↓</button></div>
+<div class="setup-grid"><label class="field-label">3 · USB serial port<select class="full-input" id="edge-port"><option value="">Scan for connected ports</option></select></label><button class="button secondary" id="scan-ports">Scan USB ports</button><button class="button primary" id="capture-edge">Capture USB report</button></div>
+<p class="field-help">115200 baud · waits up to 12 seconds · close other serial monitors. Firmware repeats reports. Opening a port can reset some boards. Matching model/input hashes are required before a report is saved.</p>
+<details class="dataset-guide"><summary>Import a device report captured elsewhere</summary><input type="file" id="edge-json" accept=".json"><button class="button secondary" id="import-edge">Import JSON report</button><p>Use the JSON after EDGELENS_RESULT: in firmware output. Imports are labelled separately from USB capture.</p></details>
+<p class="field-help" id="edge-status" aria-live="polite"></p><h3>Physical device results</h3><div id="hardware-evidence"></div><p class="field-help">Invoke-only latency and one-image output comparison. Tensor arena usage is not total RAM; one image is not a dataset accuracy benchmark.</p>
+</div></section>
+<section class="panel edge-panel"><div class="panel-heading"><div><span class="step-kicker">OPTIONAL / EDGE IMPULSE</span><h2>Resource and deployment analysis</h2><p>Provider analysis is saved separately from host and physical-device measurements.</p></div></div>
+<div class="developer-content"><div class="setup-grid"><label class="field-label">Project ID<input id="ei-project" class="full-input" type="number" min="1" placeholder="Your Edge Impulse project"></label><label class="field-label">Target MCU identifier<input id="ei-device" class="full-input" placeholder="Exact supported MCU identifier"></label><label class="field-label">Project API key<input id="ei-key" class="full-input" type="password" autocomplete="off" placeholder="Stored only for this open UI session"></label></div>
+<p class="field-help">Use the exact MCU identifier supported by your Edge Impulse project (the latencyDevices mcu value). Availability depends on the provider and your account. The key is sent to the local engine, then Edge Impulse; it is not stored in SQLite or reports.</p>
+<label class="check-consent"><input id="ei-consent" type="checkbox"> Send the selected TFLite model to my project at studio.edgeimpulse.com for profiling.</label>
+<button class="button secondary" id="submit-ei">Upload & request analysis ↗</button>
+<div class="setup-grid"><label class="field-label">Submitted job<select class="full-input" id="ei-job"></select></label><button class="button secondary" id="refresh-ei">Fetch completed analysis</button></div><div id="ei-evidence"></div></div></section>
+</div></div>
+
+<footer class="footer"><span>EdgeLens <span class="footer-dot">/</span> PyTorch-to-Edge validation</span><span>Image classification · CSE-2</span></footer>
+</main>
+</div><div id="toast" role="status" aria-live="polite" hidden></div>
+</body></html>
