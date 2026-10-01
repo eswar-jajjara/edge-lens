@@ -1,2 +1,4 @@
 -r requirements.txt
 httpx>=0.28,<1.0
+# Numerical validation unit tests; full ML runtimes remain optional.
+numpy>=1.26,<3
