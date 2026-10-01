@@ -48,6 +48,6 @@ npm run desktop:package
 
 The custom integration suite runs tiny real PT2/ONNX/FP32 and int8 TFLite classifiers using synthetic fixtures. It verifies behavior, not project accuracy. The optional full pretrained MobileNetV2 smoke test uses `EDGELENS_ML_SMOKE=1` and may download official weights.
 
-Packaging copies Python sources because the exporter inspects them. This is an unsigned portable development build, not a signed installer. Native Electron startup still needs confirmation outside the restricted agent session; see [verification](docs/VERIFICATION.md).
+Packaging copies Python sources because the exporter inspects them. This is an unsigned portable development build, not a signed installer. Fresh Windows setup, native desktop startup and a relocated portable runtime are verified in [Windows CI](https://github.com/eswar-jajjara/edge-lens/actions/runs/36851712108); see [verification](docs/VERIFICATION.md). Use the setup/runtime check on each teammate's laptop.
 
 See [architecture and frameworks](docs/ARCHITECTURE.md), [methodology](docs/BENCHMARKING.md), [API](docs/API.md) and [deployment](docs/DEPLOYMENT.md).
