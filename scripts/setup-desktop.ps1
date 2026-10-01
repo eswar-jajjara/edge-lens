@@ -31,11 +31,12 @@ try {
     $node = Get-Command node.exe -ErrorAction SilentlyContinue
     $npm = Get-Command npm.cmd -ErrorAction SilentlyContinue
     if (-not $node -or -not $npm) {
-        throw 'Install Node.js 22 or newer from https://nodejs.org/en/download, restart the terminal, then run setup-windows.cmd again. The portable release does not need Node.js.'
+        throw 'Install 64-bit Node.js 22.12 or newer from https://nodejs.org/en/download, restart the terminal, then run setup-windows.cmd again. The portable release does not need Node.js.'
     }
     $nodeVersion = & $node.Source --version
-    $nodeMajor = [regex]::Match("$nodeVersion", '^v(\d+)').Groups[1].Value
-    if ($LASTEXITCODE -ne 0 -or -not $nodeMajor -or [int]$nodeMajor -lt 22) { throw 'Node.js 22 or newer is required.' }
+    if ($LASTEXITCODE -ne 0 -or [Version]("$nodeVersion".Trim().TrimStart('v')) -lt [Version]'22.12.0') { throw 'Node.js 22.12 or newer is required.' }
+    $nodeArchitecture = & $node.Source -p 'process.arch'
+    if ($LASTEXITCODE -ne 0 -or "$nodeArchitecture".Trim() -ne 'x64') { throw 'Use the Windows x64 Node.js installer.' }
     if (Test-Path -LiteralPath $pythonExe) {
         Assert-Python -Program $pythonExe
     } else {
@@ -68,6 +69,8 @@ try {
             Invoke-Checked -Program $pythonExe -Arguments @('-m', 'pip', 'install', '-r', $requirements)
             Write-Host 'Installing the locked desktop dependencies...'
             Invoke-Checked -Program $npm.Source -Arguments @('ci', '--no-audit', '--no-fund')
+            Write-Host 'Downloading the locked Electron desktop runtime...'
+            Invoke-Checked -Program $node.Source -Arguments @('node_modules/electron/install.js')
             Invoke-Checked -Program $node.Source -Arguments @('scripts/build.mjs')
         }
         if (-not (Test-Path -LiteralPath (Join-Path $projectRoot 'node_modules\electron\dist\electron.exe'))) {

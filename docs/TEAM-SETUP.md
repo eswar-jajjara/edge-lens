@@ -14,7 +14,7 @@ The initial download is large because it includes CPU PyTorch. Allow about 3 GB 
 
 ## Develop from GitHub source
 
-1. Install [64-bit Python 3.12](https://www.python.org/downloads/windows/) and [Node.js 22 or newer](https://nodejs.org/en/download). Restart the terminal after installation. Python 3.13/3.14 is not the tested runtime for this snapshot.
+1. Install [64-bit Python 3.12](https://www.python.org/downloads/windows/) and [64-bit Node.js 22.12 or newer](https://nodejs.org/en/download). Restart the terminal after installation. Python 3.13/3.14 is not the tested runtime for this snapshot.
 2. Clone the repository, or choose **Code → Download ZIP** and extract it. The project can live on any drive; it does not require the original author's `D:\projects` folder.
 3. Double-click **setup-windows.cmd**. It creates `backend\.venv`, installs the exact Python snapshot and npm lockfile, builds the interface and performs a tiny real PT2-to-ONNX conversion check. The first setup downloads large packages; keep Internet access available. It does not install global packages or require an administrator account.
 4. After setup succeeds, double-click **start-desktop.cmd**. It builds the current interface, opens the desktop app and starts the private Python engine automatically.

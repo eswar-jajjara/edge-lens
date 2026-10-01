@@ -6,7 +6,7 @@ A Windows desktop developer tool for validating image-classifier conversion and 
 
 **For your teammate:** download [the Windows x64 portable ZIP from v0.4.1](https://github.com/eswar-jajjara/edge-lens/releases/tag/v0.4.1), extract the entire folder and open `EdgeLens.exe`. Python, Node.js and a GPU are not required separately. Each laptop keeps its own data under `%APPDATA%/EdgeLens/data`.
 
-**From GitHub source:** install 64-bit Python 3.12 and Node.js 22+, double-click `setup-windows.cmd` once, then `start-desktop.cmd`. Setup installs the tested dependency versions and checks a real tiny PT2/ONNX conversion. `check-windows.cmd` verifies an existing setup. See [the teammate setup guide](docs/TEAM-SETUP.md) for prerequisites, diagnostics and sharing experiments.
+**From GitHub source:** install 64-bit Python 3.12 and 64-bit Node.js 22.12+, double-click `setup-windows.cmd` once, then `start-desktop.cmd`. Setup installs the tested dependency versions and checks a real tiny PT2/ONNX conversion. `check-windows.cmd` verifies an existing setup. See [the teammate setup guide](docs/TEAM-SETUP.md) for prerequisites, diagnostics and sharing experiments.
 
 **Start with [the developer guide](docs/DEVELOPER-GUIDE.md)** for upload settings, test datasets, conversion comparisons, firmware steps and troubleshooting.
 
@@ -25,7 +25,7 @@ TFLite **inference** works in this Windows engine, including per-tensor int8 inp
 
 ## Develop
 
-Use Node.js 22+ and 64-bit Python 3.12 for the tested Windows runtime:
+Use 64-bit Node.js 22.12+ and 64-bit Python 3.12 for the tested Windows runtime:
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/setup-desktop.ps1
