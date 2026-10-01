@@ -26,4 +26,6 @@ shutil.copytree(site_packages, destination / "Lib" / "site-packages", dirs_exist
 shutil.copytree(root / "backend" / "app", destination / "app", dirs_exist_ok=True, ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
 shutil.copy2(root / "backend" / "desktop_entry.py", destination / "desktop_entry.py")
 shutil.copy2(root / "backend" / "cli.py", destination / "cli.py")
+shutil.copy2(root / "backend" / "check_install.py", destination / "check_install.py")
+shutil.copy2(root / "backend" / "requirements-windows-tested.txt", destination / "requirements-windows-tested.txt")
 print(f"Portable Python engine prepared in {destination}")

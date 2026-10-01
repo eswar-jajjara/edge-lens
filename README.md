@@ -1,10 +1,12 @@
-# EdgeLens — Model Conversion Studio 0.4
+# EdgeLens — Model Conversion Studio 0.4.1
 
 A Windows desktop developer tool for validating image-classifier conversion and preparing real ESP32 benchmarks. Electron starts a private local Python engine automatically; SQLite stores models, datasets, metrics, layer findings and reports. Model binaries stay on disk with SHA256 metadata in SQLite.
 
 ## Open it
 
-Double-click `start-desktop.cmd`, or `release/win-unpacked/EdgeLens.exe`. Keep the whole portable folder together. It contains Python, CPU PyTorch/ONNX, LiteRT inference and serial support. Data is stored separately under `%APPDATA%/EdgeLens/data`.
+**For your teammate:** download [the Windows x64 portable ZIP from v0.4.1](https://github.com/eswar-jajjara/edge-lens/releases/tag/v0.4.1), extract the entire folder and open `EdgeLens.exe`. Python, Node.js and a GPU are not required separately. Each laptop keeps its own data under `%APPDATA%/EdgeLens/data`.
+
+**From GitHub source:** install 64-bit Python 3.12 and Node.js 22+, double-click `setup-windows.cmd` once, then `start-desktop.cmd`. Setup installs the tested dependency versions and checks a real tiny PT2/ONNX conversion. `check-windows.cmd` verifies an existing setup. See [the teammate setup guide](docs/TEAM-SETUP.md) for prerequisites, diagnostics and sharing experiments.
 
 **Start with [the developer guide](docs/DEVELOPER-GUIDE.md)** for upload settings, test datasets, conversion comparisons, firmware steps and troubleshooting.
 
@@ -23,13 +25,10 @@ TFLite **inference** works in this Windows engine, including per-tensor int8 inp
 
 ## Develop
 
-Use Node.js 22+ and Python 3.11/3.12 with compatible CPU torch/torchvision packages:
+Use Node.js 22+ and 64-bit Python 3.12 for the tested Windows runtime:
 
 ```powershell
-python -m venv backend/.venv
-backend/.venv/Scripts/python.exe -m pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
-backend/.venv/Scripts/python.exe -m pip install -r backend/requirements-ml.txt -r backend/requirements-dev.txt -r backend/requirements-edge.txt
-npm install
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/setup-desktop.ps1
 npm run desktop
 ```
 

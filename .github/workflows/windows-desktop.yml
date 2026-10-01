@@ -1,0 +1,51 @@
+name: Windows teammate setup
+on:
+  push:
+    branches: [main]
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  desktop:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          architecture: x64
+      - name: Extract fresh source into a path with spaces
+        shell: pwsh
+        run: |
+          $sourceZip = Join-Path $env:RUNNER_TEMP 'edgelens-source.zip'
+          $teamRoot = Join-Path $env:RUNNER_TEMP 'EdgeLens teammate'
+          git archive HEAD --format=zip --output=$sourceZip
+          if ($LASTEXITCODE -ne 0) { throw 'Source archive failed' }
+          Expand-Archive -LiteralPath $sourceZip -DestinationPath $teamRoot
+          "EDGELENS_TEAM_ROOT=$teamRoot" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+      - name: Set up the source download
+        shell: powershell
+        run: |
+          & (Join-Path $env:EDGELENS_TEAM_ROOT 'scripts/setup-desktop.ps1') -PythonPath (Get-Command python.exe).Source
+          if ($LASTEXITCODE -ne 0) { throw 'Teammate setup failed' }
+      - name: Verify native desktop startup
+        timeout-minutes: 3
+        shell: pwsh
+        run: |
+          Set-Location $env:EDGELENS_TEAM_ROOT
+          $env:EDGELENS_DESKTOP_DATA = Join-Path $env:RUNNER_TEMP 'EdgeLens smoke data'
+          $log = Join-Path $env:RUNNER_TEMP 'edgelens-desktop-smoke.log'
+          & node_modules/electron/dist/electron.exe . --smoke-test 2>&1 | Tee-Object -FilePath $log
+          if ($LASTEXITCODE -ne 0) { throw 'Native desktop startup failed' }
+          if (-not (Select-String -LiteralPath $log -Pattern '"desktop_smoke":"passed"' -Quiet)) { throw 'Desktop smoke success message missing' }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: windows-setup-diagnostics
+          path: |
+            ${{ env.EDGELENS_TEAM_ROOT }}/.cache/setup-report.json
+            ${{ runner.temp }}/edgelens-desktop-smoke.log

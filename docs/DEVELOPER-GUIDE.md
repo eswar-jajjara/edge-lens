@@ -1,6 +1,6 @@
 # EdgeLens 0.4 — test your own classifier
 
-Open `D:\projects\edge-lens\start-desktop.cmd`, or the updated portable `release\win-unpacked\EdgeLens.exe`. Keep its entire folder together. The app is a desktop program with a local engine and SQLite storage. A browser preview is only used during interface development.
+Open `start-desktop.cmd` from your project folder after running `setup-windows.cmd`, or open `EdgeLens.exe` from the fully extracted Windows portable release. The project can live on any drive. See [teammate setup](TEAM-SETUP.md). The app is a desktop program with a local engine and SQLite storage. A browser preview is only used during interface development.
 
 ## What you can upload
 

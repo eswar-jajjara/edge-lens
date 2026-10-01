@@ -1,11 +1,23 @@
 @echo off
+setlocal
 cd /d "%~dp0"
 if exist "release\win-unpacked\EdgeLens.exe" (
   start "" "release\win-unpacked\EdgeLens.exe"
   exit /b
 )
 if not exist "node_modules\electron\dist\electron.exe" (
-  echo Run npm install and npm run build first. See README.md.
+  echo Double-click setup-windows.cmd first. See docs\TEAM-SETUP.md.
+  pause
+  exit /b 1
+)
+if not exist "backend\.venv\Scripts\python.exe" (
+  echo Double-click setup-windows.cmd first to install the Python engine.
+  pause
+  exit /b 1
+)
+node scripts\build.mjs
+if errorlevel 1 (
+  echo Interface build failed. Run setup-windows.cmd and try again.
   pause
   exit /b 1
 )

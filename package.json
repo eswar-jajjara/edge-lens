@@ -1,6 +1,6 @@
 {
   "name": "edgelens",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "private": true,
   "description": "Desktop image classification conversion and diagnostic studio",
   "author": "EdgeLens Capstone Team",
@@ -9,6 +9,8 @@
     "node": ">=22"
   },
   "scripts": {
+    "setup:windows": "powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File scripts/setup-desktop.ps1",
+    "check:windows": "powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File scripts/setup-desktop.ps1 -VerifyOnly",
     "dev": "node scripts/dev.mjs",
     "build": "node scripts/build.mjs",
     "check": "node scripts/check.mjs",

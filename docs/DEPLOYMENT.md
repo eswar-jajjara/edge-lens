@@ -2,11 +2,13 @@
 
 ## Windows desktop (primary)
 
+Teammates can use [the Windows portable release](https://github.com/eswar-jajjara/edge-lens/releases/tag/v0.4.1) without installing Python/Node.js, or run `setup-windows.cmd` after downloading the source. See [team setup](TEAM-SETUP.md). The supported distribution is Windows 10/11 x64 with the pinned Python 3.12 CPU runtime. Each laptop uses its own data folder; shared source does not synchronize SQLite.
+
 `npm run desktop:package` creates `release/win-unpacked/EdgeLens.exe` and its supporting files. Distribute the entire folder, not only the executable. The build bundles Electron, a portable copy of the active virtual environment's Python runtime, and the CPU ML packages. Python source remains available for PyTorch export introspection.
 
 The app starts its own private local engine and automatically connects to it. Runtime data lives under `%APPDATA%/EdgeLens/data`; the installation directory contains code and libraries only. Back up that data folder while EdgeLens is closed to preserve SQLite, datasets, converted artifacts and cached weights together. It is a single-user application.
 
-Only sample pretrained presets need initial access to `download.pytorch.org`; uploaded models run locally. Explicit Edge Impulse profiling needs its API and credentials. The runtime is CPU-only. The portable build is unsigned; a code-signing certificate, installer and auto-update service have not been configured. Packaging is separate from publishing; nothing is uploaded to a public service.
+Only sample pretrained presets need initial access to `download.pytorch.org`; uploaded models run locally. Explicit Edge Impulse profiling needs its API and credentials. The runtime is CPU-only. The portable build is unsigned; a code-signing certificate, installer and auto-update service have not been configured. The packager creates local files; public release assets are uploaded explicitly to GitHub.
 
 ## Developer browser preview
 
@@ -39,4 +41,4 @@ Run only one backend process. On a VM, use an SSH tunnel to reach localhost8080 
 
 ## Continuous integration
 
-The workflow checks source assets, frontend API tests, build output, Compose configuration, and backend API/storage/statistics tests. The real ONNX smoke test is opt-in because it downloads weights. Windows executable packaging is performed locally; this workflow does not publish binaries.
+The main workflow checks source assets, frontend API tests, build output, Compose configuration, and backend API/storage/statistics tests. A Windows workflow tests teammate setup in a fresh source folder containing spaces, checks a real tiny conversion and starts the native desktop in smoke-test mode. The pretrained ONNX smoke test remains opt-in because it downloads weights. These workflows do not publish binaries.

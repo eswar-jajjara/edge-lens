@@ -23,5 +23,12 @@ await cp(engine, path.join(resources, 'engine'), { recursive: true });
 await cp(path.join(root, 'dist'), path.join(resources, 'ui'), { recursive: true });
 await cp(path.join(root, 'docs'), path.join(output, 'docs'), { recursive: true });
 await copyFile(path.join(root, 'desktop', 'icon.ico'), path.join(resources, 'icon.ico'));
-await writeFile(path.join(output, 'READ ME.txt'), 'EdgeLens — Model Conversion Studio\r\n\r\nDouble-click EdgeLens.exe. Keep this entire folder together.\r\nPython, CPU ONNX, LiteRT inference and USB serial support are included.\r\nUpload your own trusted PT2, ONNX or TFLite classifier. Sample presets may download pretrained weights.\r\nYour data is saved in %APPDATA%\\EdgeLens\\data.\r\nTFLite conversion needs an optional Linux worker; it is unavailable here.\r\nThis is an unsigned portable prototype, not a signed installer.\r\n');
+await writeFile(path.join(output, 'READ ME.txt'), `EdgeLens ${source.version} — Model Conversion Studio\r\n\r\nWindows 10/11 x64. Extract this entire folder, then double-click EdgeLens.exe.\r\nKeep all supporting files together. Python, Node.js and a GPU are not needed separately.\r\nCPU PyTorch/ONNX, LiteRT inference and USB serial support are included.\r\nIf startup fails, double-click check-runtime.cmd and read docs/TEAM-SETUP.md.\r\nUpload your own trusted PT2, ONNX or TFLite classifier. Sample presets may download pretrained weights.\r\nYour data is saved separately in %APPDATA%\\EdgeLens\\data on this laptop.\r\nLatency differs between computers. TFLite conversion needs an optional Linux worker.\r\nThis is an unsigned portable prototype, not a signed installer.\r\n`);
+await writeFile(path.join(output, 'check-runtime.cmd'), [
+  '@echo off', 'setlocal', 'cd /d "%~dp0"',
+  'set "PYTHONHOME=%~dp0resources\\engine"', 'set "PYTHONPATH="',
+  '"%~dp0resources\\engine\\python.exe" "%~dp0resources\\engine\\check_install.py" --frontend-dir "%~dp0resources\\ui" --report "%LOCALAPPDATA%\\EdgeLens\\setup-report.json"',
+  'if errorlevel 1 (echo Runtime check failed. See the error above.)',
+  'echo Diagnostic report: %LOCALAPPDATA%\\EdgeLens\\setup-report.json', 'pause', '',
+].join('\r\n'));
 console.log(`Portable desktop application: ${path.join(output, 'EdgeLens.exe')}`);
