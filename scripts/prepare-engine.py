@@ -13,7 +13,14 @@ base = Path(sys.base_prefix)
 site_packages = Path(sys.prefix) / "Lib" / "site-packages"
 if sys.platform != "win32" or sys.prefix == sys.base_prefix:
     raise SystemExit("Run this with the Windows backend virtual environment Python.")
-destination.mkdir(parents=True, exist_ok=True)
+# This is generated runtime output. Recreate it so removed/changed packages
+# cannot leave stale modules or duplicate dist-info metadata in a teammate build.
+expected_destination = root.resolve() / "desktop" / "engine"
+if destination.resolve() != expected_destination or destination.is_symlink():
+    raise SystemExit("Refusing to replace an unexpected portable engine path.")
+if destination.exists():
+    shutil.rmtree(destination)
+destination.mkdir(parents=True)
 for name in ("python.exe", "python3.dll", f"python{sys.version_info.major}{sys.version_info.minor}.dll", "vcruntime140.dll", "vcruntime140_1.dll", "LICENSE.txt"):
     source = base / name
     if source.exists():

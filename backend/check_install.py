@@ -11,10 +11,15 @@ import tempfile
 from uuid import uuid4
 
 CORE = ('torch', 'torchvision', 'numpy', 'Pillow', 'onnx', 'onnxscript',
-        'onnxruntime', 'ai-edge-litert', 'fastapi', 'uvicorn', 'pydantic', 'httpx', 'pyserial')
+        'onnxruntime', 'ai-edge-litert', 'backports.strenum', 'fastapi', 'uvicorn', 'pydantic', 'httpx', 'pyserial')
 
 
 def check(frontend_dir, report_path):
+    # Exporter progress uses Unicode. Redirected Windows consoles otherwise
+    # default to legacy code pages and can fail an otherwise valid conversion.
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, 'reconfigure'):
+            stream.reconfigure(encoding='utf-8', errors='replace')
     result = {'checked_at': datetime.now(timezone.utc).isoformat(),
               'python': platform.python_version(), 'platform': platform.platform(),
               'status': 'failed', 'checks': {}, 'versions': {}}

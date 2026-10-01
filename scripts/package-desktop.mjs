@@ -1,5 +1,5 @@
 // Electron's documented manual distribution layout; no installer or signing step.
-import { cp, mkdir, readFile, copyFile, unlink, writeFile, stat } from 'node:fs/promises';
+import { cp, mkdir, readFile, copyFile, unlink, writeFile, stat, realpath, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 const root = path.resolve(fileURLToPath(new URL('../', import.meta.url)));
@@ -14,6 +14,15 @@ await cp(electron, output, { recursive: true });
 await copyFile(path.join(output, 'electron.exe'), path.join(output, 'EdgeLens.exe'));
 await unlink(path.join(output, 'electron.exe'));
 const resources = path.join(output, 'resources');
+await mkdir(resources, { recursive: true });
+if ((await realpath(resources)).toLowerCase() !== path.resolve(resources).toLowerCase()) throw new Error('Refusing an unexpected package resource path.');
+for (const name of ['app', 'engine', 'ui']) {
+  const generated = path.join(resources, name);
+  try {
+    if ((await realpath(generated)).toLowerCase() !== path.resolve(generated).toLowerCase()) throw new Error('Refusing to replace a linked package directory.');
+  } catch (error) { if (error.code !== 'ENOENT') throw error; }
+  await rm(generated, { recursive: true, force: true });
+}
 const appDir = path.join(resources, 'app');
 await mkdir(path.join(appDir, 'desktop'), { recursive: true });
 await copyFile(path.join(root, 'desktop', 'main.cjs'), path.join(appDir, 'desktop', 'main.cjs'));

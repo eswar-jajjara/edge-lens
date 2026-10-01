@@ -5,6 +5,8 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+$env:PYTHONUTF8 = '1'
+$env:PYTHONUNBUFFERED = '1'
 $projectRoot = Split-Path $PSScriptRoot -Parent
 $pythonExe = Join-Path $projectRoot 'backend\.venv\Scripts\python.exe'
 $requirements = Join-Path $projectRoot 'backend\requirements-windows-tested.txt'
