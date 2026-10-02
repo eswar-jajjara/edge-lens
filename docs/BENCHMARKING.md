@@ -1,4 +1,4 @@
-# Benchmark methodology — version 0.4
+# Benchmark methodology — version 0.6
 
 Developer classifiers use the exact uploaded export, declared image preprocessing and model class order. Common torchvision presets remain optional. A PT2 source supplies a PyTorch reference. ONNX/TFLite-only uploads support standalone inference metrics; missing reference comparisons are null.
 
@@ -11,6 +11,13 @@ Separate calibration images rank the candidates by `(number of images outside to
 Total strategy time includes two exports, session creation and calibration execution. Candidate export times are retained separately. A single conversion run is affected by initialization/cache order and is not a rigorous speed comparison of compiler implementations.
 
 ## Held-out measurements
+
+The fixed FP32/static-INT8 workflow is described in
+[precision experiments](PRECISION-EXPERIMENTS.md). Phase 2 adds bounded
+[deployment configuration search](DEPLOYMENT-SEARCH.md): calibration sets ranges
+and diagnostic rankings, validation measures controlled exclusions and selects
+under explicit constraints, then the chosen artifact is frozen before test
+inference. Final test results are never used to retune that run.
 
 - Top-1 accuracy = correct predictions / labelled images. Delta is in percentage points. Agreement compares argmax with the PyTorch reference, not true labels.
 - Numerical differences compare raw class-score vectors without adding a softmax. Tolerance uses `abs(candidate - reference) <= atol + rtol * abs(reference)` as implemented by NumPy's comparison call.
@@ -33,4 +40,4 @@ One-image board output can be compared with the host TFLite result. It does not 
 
 Edge Impulse profiling is optional and asynchronous. Its resource/timing analysis is shown as provider analysis, never as a measurement of the user's connected ESP32. No fake hardware latency is produced when a board or provider is unavailable.
 
-TFLite conversion remains an optional Linux LiteRT Torch path with identical FP32 controls, not a distinct optimized TFLite converter. Imported FP32/int8 TFLite inference works in the current Windows engine. Quantization training/calibration and Raspberry Pi hardware execution are future work.
+TFLite conversion remains an optional Linux LiteRT Torch path with identical FP32 controls, not a distinct optimized TFLite converter. Imported FP32/int8 TFLite inference works in the current Windows engine. Static ONNX calibration and selective quantization search are implemented; quantization-aware training and Raspberry Pi hardware execution remain future work.

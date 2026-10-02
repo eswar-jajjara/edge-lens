@@ -5,7 +5,8 @@ import io
 import json
 
 METRICS = ["label", "accuracy_pct", "correct_count", "sample_count", "accuracy_delta_pp", "accuracy_delta_vs_fp32_pp", "reference_profile", "agreement_pct", "latency_mean_ms", "latency_p50_ms", "latency_p95_ms", "conversion_seconds", "size_bytes", "output_mae", "output_max_abs", "tolerance_failure_count"]
-LAYERS = ["profile", "name", "operation", "status", "mae", "max_abs", "sample_index", "expected_shape", "actual_shape", "max_error_index", "expected_value", "actual_value", "detail"]
+LAYERS = ["profile", "name", "operation", "status", "mae", "max_abs", "nrmse", "sample_count", "scope", "sample_index", "expected_shape", "actual_shape", "max_error_index", "expected_value", "actual_value", "detail"]
+SENSITIVITY = ["node", "operation", "candidate_id", "parent_candidate", "status", "accuracy_recovery_pp", "output_mae_change", "excluded_nodes", "evidence_split", "interpretation"]
 PREDICTIONS = ["profile", "sample_index", "image", "label", "prediction", "reference_prediction", "max_abs", "within_tolerance"]
 SELECTION = ["id", "export_optimize", "runtime_optimize", "tolerance_failure_count", "output_mae", "output_max_abs", "export_seconds"]
 HARDWARE = ["profile", "source", "model_sha256", "latency_p50_ms", "latency_p95_ms", "arena_used_bytes", "output_mae", "output_max_abs", "within_tolerance"]
@@ -28,7 +29,7 @@ def report_csv(report):
     def row(values):
         writer.writerow([_cell(x) for x in values])
     row(["EdgeLens measured host CPU report", report.get("run_id")])
-    for key in ("model", "dataset", "datasets", "summary", "environment", "settings", "accuracy_resolution_pp", "search", "test_data_used_for_selection"):
+    for key in ("model", "dataset", "datasets", "summary", "environment", "settings", "accuracy_resolution_pp", "search", "diagnostics", "test_data_used_for_selection"):
         row([key, report.get(key)])
     selection = report.get("selection") or {}
     row(["selection", {k: v for k, v in selection.items() if k != "candidates"}])
@@ -37,6 +38,7 @@ def report_csv(report):
                 ("Validation metrics", [c["validation_metrics"] for c in report.get("candidates", []) if c.get("validation_metrics")], METRICS),
                 ("Calibration selection", selection.get("candidates", []), SELECTION),
                 ("Layer diagnostics", report.get("layers", []), LAYERS),
+                ("Controlled validation sensitivity", report.get("sensitivity", []), SENSITIVITY),
                 ("Per-image results", report.get("predictions", []), PREDICTIONS),
                 ("Physical device reports", [x for x in report.get("edge_results", []) if x["kind"] == "hardware"], HARDWARE)]
     for name, rows, keys in sections:
@@ -75,9 +77,14 @@ def report_html(report):
     candidates = report.get("candidates", [])
     if candidates:
         candidate_rows = [{"candidate": c["name"], "status": c["status"], "validation_accuracy_pct": (c.get("validation_metrics") or {}).get("accuracy_pct"),
+                           "validation_latency_ms": (c.get("validation_metrics") or {}).get("latency_p50_ms"),
+                           "eligible": (c.get("eligibility") or {}).get("eligible"), "constraint_rejections": (c.get("eligibility") or {}).get("reasons"),
+                           "pareto_efficient": c.get("pareto_efficient"),
                            "test_accuracy_pct": (c.get("test_metrics") or {}).get("accuracy_pct"),
                            "failure": (c.get("failure") or {}).get("message"), "artifact_sha256": c.get("artifact_sha256")} for c in candidates]
         selection_section = "<h2>2. FP32 and static INT8 candidates</h2><p>Fixed configurations; no automatic winner or test-based tuning. Calibration sets INT8 ranges; validation and held-out test results remain separate. QDQ graph coverage does not establish fully integer execution.</p>" + table(candidate_rows, ["candidate", "status", "validation_accuracy_pct", "test_accuracy_pct", "failure", "artifact_sha256"]) + "<h3>Dataset roles and hashes</h3>" + pretty(report.get("datasets", {})) + "<h3>Configuration, coverage, failures and provenance</h3>" + pretty(candidates)
+        if report.get("experiment_type") == "deployment_optimization":
+            selection_section = "<h2>2. Deployment configuration search</h2><p>Calibration fits ranges and collects operation diagnostics. Validation alone determines constraints, Pareto membership and the selected objective. Selection is frozen before held-out evaluation. Unselected candidates retain validation evidence only.</p>" + pretty(selection) + table(candidate_rows, ["candidate", "status", "validation_accuracy_pct", "validation_latency_ms", "eligible", "constraint_rejections", "pareto_efficient", "test_accuracy_pct", "failure"]) + "<h3>Controlled one-operation exclusion experiments</h3>" + table(report.get("sensitivity", []), SENSITIVITY) + "<h3>Bounded activation diagnostics</h3>" + pretty(report.get("diagnostics", {})) + "<h3>Search budget</h3>" + pretty(report.get("search", {})) + "<h3>Dataset roles and hashes</h3>" + pretty(report.get("datasets", {})) + "<details><summary>Full candidate configurations, coverage and provenance</summary>" + pretty(candidates) + "</details>"
     else:
         selection_section = f"<h2>2. Converter selection</h2><p>{text(selection.get('objective', 'No calibration-guided search in this run.'))}</p><p>Selected: {text(selection.get('selected'))} · Total search seconds: {text(selection.get('total_strategy_seconds'))}. Test data is held out.</p>" + table(selection.get("candidates", []), SELECTION) + pretty(selection.get("calibration", {}))
     return f'''<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>EdgeLens developer report</title>

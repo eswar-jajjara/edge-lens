@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 import hashlib
 import importlib.metadata
 import io
+import json
 import os
 import platform
 import shutil
@@ -204,9 +205,11 @@ def _provenance(metric, split):
 
 
 def _run_quantization_comparison(request, dataset, output_dir):
-    """Fixed FP32/static-INT8 experiments, sharing the existing evaluation and timer."""
+    """Precision comparisons and deployment search share one evaluator and timer."""
     import numpy as np
     from app.services import quantization as q
+    optimizing = request.get("strategy") == "deployment_search"
+    optimization = None
     source, settings = request["_model"], b._settings(request)
     if source["format"] not in {"pt2", "onnx"} or request["format"] != "onnx":
         raise ValueError("FP32/INT8 experiments require an uploaded PT2 or FP32 ONNX classifier")
@@ -266,7 +269,7 @@ def _run_quantization_comparison(request, dataset, output_dir):
         for i, node in enumerate(graph.graph.node):
             layers.append({"profile": candidate["id"], "name": node.name or f"node_{i}", "operation": node.op_type,
                            "status": "unmapped", "mae": None, "max_abs": None,
-                           "detail": "Operator inventory only. Quantized intermediate correspondence and layer sensitivity are not established in this milestone."})
+                           "detail": "Operator inventory only; numerical correspondence was not established for this entry. See measured diagnostic entries and controlled sensitivity evidence where available."})
 
     try:
         if source["format"] == "pt2":
@@ -313,11 +316,46 @@ def _run_quantization_comparison(request, dataset, output_dir):
         else:
             fail(quantized, "dependency", ValueError("FP32 baseline failed; quantization was not attempted"))
 
-        # All transformation parameters are fixed before validation or test evaluation.
+        if optimizing:
+            from app.services.deployment_search import explore
+            from app.schemas.runs import SearchSettings, DeploymentConstraints
+            val_arrays, val_labels = split_inputs["validation"]
+            validation_reference = [profiles[0]["infer"](array) for array in val_arrays] if profiles else []
+            def evaluate_validation(profile):
+                metric, _ = evaluate_profile(profile, val_arrays, validation_reference, val_labels, validation, settings)
+                metric.update(peak_ram_bytes=None, device_latency_ms=None, latency_mean_ms=None, latency_p50_ms=None,
+                              latency_p95_ms=None, latency_samples_ms=None, reference_profile=profiles[0]["profile"], evaluation_split="validation")
+                return _provenance(metric, "validation")
+            optimization = explore(baseline_path=baseline_path, candidates=candidates, profiles=profiles, artifacts=artifacts,
+                                   output_dir=output_dir, calibration_arrays=split_inputs["calibration"][0], validation_arrays=val_arrays,
+                                   settings=settings, search=SearchSettings.model_validate(request.get("search", {})).model_dump(),
+                                   constraints=DeploymentConstraints.model_validate(request.get("constraints", {})).model_dump(),
+                                   initial_config=config, register=register, evaluate=evaluate_validation, fail=fail)
+            for candidate in candidates:
+                value = candidate.get("validation_metrics")
+                base_value = baseline.get("validation_metrics")
+                if value:
+                    value["accuracy_delta_vs_fp32_pp"] = value["accuracy_pct"] - base_value["accuracy_pct"] if base_value else None
+                    _provenance(value, "validation")
+            lookup = {(row["profile"], row["name"]): row for row in layers}
+            for row in optimization["diagnostics"].get("rows", []):
+                measured = dict(row, profile=optimization["diagnostics"].get("profile"))
+                if (measured["profile"], measured["name"]) in lookup:
+                    lookup[(measured["profile"], measured["name"])].update(measured)
+                else:
+                    layers.append(measured)
+            diagnostics_file = output_dir / "layer-diagnostics.json"
+            diagnostics_file.write_text(json.dumps({"diagnostics": optimization["diagnostics"], "sensitivity": optimization["sensitivity"]}, indent=2), encoding="utf-8")
+            artifact = b._artifact("layer_diagnostics", "json", diagnostics_file)
+            artifact["role"] = "diagnostic_report"
+            artifacts.append(artifact)
+
+        # Selection is frozen before any held-out inference. Phase 1 stays fixed.
         metrics, predictions = [], []
         reference_profile = profiles[0] if profiles else None
-        valid_profiles = list(profiles)
-        for role in ("validation", "test"):
+        final_ids = {"pytorch", "fp32", "static_int8", optimization["selection"]["selected"]} if optimizing else None
+        valid_profiles = [profile for profile in profiles if not optimizing or (profile["profile"] in final_ids and profile.get("candidate", {}).get("status") != "failed")]
+        for role in (("test",) if optimizing else ("validation", "test")):
             arrays, labels = split_inputs[role]
             reference_outputs = [reference_profile["infer"](x) for x in arrays] if reference_profile else []
             for profile in list(valid_profiles):
@@ -379,7 +417,7 @@ def _run_quantization_comparison(request, dataset, output_dir):
                 layers.append({"profile": metric["profile"], "name": "output.logits", "operation": "ClassifierOutput", "sample_index": 0,
                                "status": "pass" if row["within_tolerance"] else "drift", "mae": row["mae"], "max_abs": row["max_abs"],
                                "detail": f"Final output on the first test image compared to {metric['reference_profile']}. This is not a layer root-cause diagnosis."})
-        return {"schema_version": 3, "source": "measured", "experiment_type": "fp32_static_int8", "model": spec,
+        report = {"schema_version": 3, "source": "measured", "experiment_type": "fp32_static_int8", "model": spec,
                 "created_at": datetime.now(timezone.utc).isoformat(), "dataset": splits["test"], "datasets": splits,
                 "summary": summary, "selection": None, "test_data_used_for_selection": False,
                 "search": {"candidate_limit": 2, "attempted_candidates": 2, "automatic_selection": False, "elapsed_seconds": time.perf_counter() - started},
@@ -403,6 +441,25 @@ def _run_quantization_comparison(request, dataset, output_dir):
                                 f"One changed prediction = {100 / dataset['image_count']:.6g} pp. Small datasets are smoke tests, not reliable model-quality evidence." if dataset["image_count"] < 300 else f"One changed prediction = {100 / dataset['image_count']:.6g} pp; this is sample accuracy, without a statistical significance claim.",
                                 "Host timings are not ESP32 or Raspberry Pi timings. No physical-device latency or peak RAM is measured. Serialized bytes are not runtime RAM or total firmware flash.",
                                 "Equal, slower, larger and less accurate candidates remain visible. A 0.001 pp accuracy step needs at least 100,000 test images; this bounded prototype does not support that scale."]}
+        if optimizing:
+            selection = optimization["selection"]
+            selected = next((candidate for candidate in candidates if candidate["id"] == selection["selected"]), None)
+            if selected and selected.get("test_metrics") and selected["status"] == "completed":
+                value = selected["test_metrics"]
+                report["summary"] = {"conclusion": f"Selected {selected['name']} using validation {selection['objective']}. Held-out accuracy: {value['accuracy_pct']:.6g}%. Selection was frozen before test evaluation.",
+                                     "accuracy_delta_pp": value.get("accuracy_delta_vs_fp32_pp"), "selected": selected["id"]}
+            else:
+                report["summary"] = {"conclusion": "No final deployment recommendation: " + ("trade-offs only; no optimization objective requested." if selection["decision"] == "tradeoffs_only" else "no measured candidate satisfies the constraints, or the selected candidate's final test failed.")}
+            report.update(schema_version=4, experiment_type="deployment_optimization", selection=selection,
+                          search={**optimization["search"], "total_strategy_seconds": time.perf_counter() - started},
+                          sensitivity=optimization["sensitivity"], diagnostics=optimization["diagnostics"])
+            report["methodology"] = ["Build bounded static INT8 calibration/granularity candidates, then exclude sensitivity-ranked operations from quantization; reuse the same FP32 export, quantizer and evaluator.",
+                                     "Calibration alone determines ranges and activation diagnostics. Validation alone determines controlled recovery, constraints, Pareto membership and selection.",
+                                     "One-operation probes hold other quantizer settings and calibration ranges fixed. Cumulative exclusions use operations with observed validation improvement in accuracy or, on ties, output MAE.",
+                                     "Selection is frozen before held-out inference. PyTorch, FP32, the initial INT8 control and the selected configuration receive final test results; other candidates retain validation evidence only.",
+                                     "Host latency used for selection is measured on the first validation image with rotating candidate order. Final host latency uses the first test image. Diagnostic unoptimized sessions are never timed as deployment artifacts."] + report["methodology"][-3:]
+            report["limitations"][1] = "Diagnostics compare preserved ONNX operation outputs on bounded calibration samples, not arbitrary PyTorch layer identity. Propagated activation drift is not causal proof; control effects are specific to this validation subset. Excluded operations can still receive quantized neighbouring activations."
+        return report
     finally:
         if torch is not None and old_threads is not None:
             torch.set_num_threads(old_threads)
@@ -488,7 +545,7 @@ def _diagnostics(ep, first, profiles, spec, settings):
 
 
 def run_developer_benchmark(request, dataset, output_dir):
-    if request.get("strategy") == "quantization_compare":
+    if request.get("strategy") in {"quantization_compare", "deployment_search"}:
         return _run_quantization_comparison(request, dataset, output_dir)
     import numpy as np
     settings = b._settings(request)

@@ -243,9 +243,9 @@ class DeveloperUnitTests(unittest.TestCase):
             self.assertEqual(migrated.get_run(run['id'])['report']['metrics'][0]['accuracy_pct'], 42)
             self.assertEqual(migrated.list_models(), [])
             with closing(sqlite3.connect(repo.db_path)) as connection, connection:
-                self.assertEqual(connection.execute('PRAGMA user_version').fetchone()[0], 3)
+                self.assertEqual(connection.execute('PRAGMA user_version').fetchone()[0], 4)
                 self.assertEqual(connection.execute('SELECT accuracy_pct FROM run_metrics').fetchone()[0], 42)
-                connection.execute('PRAGMA user_version=4')
+                connection.execute('PRAGMA user_version=5')
             with self.assertRaisesRegex(RuntimeError, 'newer EdgeLens'):
                 Repository(root)
         finally:

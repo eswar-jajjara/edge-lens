@@ -39,11 +39,16 @@ def quantization_inventory(graph):
             "interpretation": "QDQ graph coverage, not a kernel execution trace. Float32 operations may remain; this is not a fully integer deployment claim."}
 
 
-def build_static_int8(baseline_path, output_path, calibration_inputs, config):
+def build_static_int8(baseline_path, output_path, calibration_inputs, config, *, calibration_cache=None):
     import onnx
     from onnxruntime.quantization import CalibrationDataReader, CalibrationMethod, QuantFormat, QuantType, quantize_static
     graph = onnx.load(str(baseline_path), load_external_data=False)
     require_fp32(graph)
+    exclusions = config.get("nodes_to_exclude", [])
+    eligible_names = {n.name for n in graph.graph.node if n.op_type in OP_TYPES and n.name}
+    if len(exclusions) != len(set(exclusions)) or any(name not in eligible_names for name in exclusions):
+        raise ValueError("Quantization exclusions must identify unique supported baseline operations")
+    output_path.parent.mkdir(parents=True, exist_ok=True)
     if not any(n.op_type in OP_TYPES for n in graph.graph.node):
         raise ValueError("No supported Conv, Gemm or MatMul operations to quantize")
     input_name = graph.graph.input[0].name
@@ -69,17 +74,22 @@ def build_static_int8(baseline_path, output_path, calibration_inputs, config):
     # ranges next to the experiment for reproduction and avoid hidden temp files.
     if "calibration_cache_path" in inspect.signature(quantize_static).parameters:
         from onnxruntime.quantization.calibrate import create_calibrator, save_tensors_data
-        calibrator = create_calibrator(prepared, OP_TYPES, augmented_model_path=str(output_path.with_name("calibration-augmented.onnx")),
-                                       calibrate_method=getattr(CalibrationMethod, config["calibration_method"]), providers=["CPUExecutionProvider"])
-        calibrator.collect_data(reader)
-        ranges = calibrator.compute_data()
         cache = output_path.with_name("calibration-ranges.json")
-        save_tensors_data(ranges, cache)
-        del calibrator
+        if calibration_cache is not None:
+            import shutil
+            shutil.copyfile(calibration_cache, cache)
+        else:
+            calibrator = create_calibrator(prepared, OP_TYPES, augmented_model_path=str(output_path.with_name("calibration-augmented.onnx")),
+                                           calibrate_method=getattr(CalibrationMethod, config["calibration_method"]), providers=["CPUExecutionProvider"])
+            calibrator.collect_data(reader)
+            ranges = calibrator.compute_data()
+            save_tensors_data(ranges, cache)
+            del calibrator
         reader, cache_options = None, {"calibration_cache_path": cache}
     quantize_static(prepared, output_path, reader, quant_format=QuantFormat.QDQ,
                     op_types_to_quantize=OP_TYPES, per_channel=config["per_channel"],
                     activation_type=QuantType.QInt8, weight_type=QuantType.QInt8,
+                    nodes_to_exclude=exclusions,
                     calibrate_method=getattr(CalibrationMethod, config["calibration_method"]),
                     calibration_providers=["CPUExecutionProvider"], use_external_data_format=False,
                     extra_options={"WeightSymmetric": True}, **cache_options)
@@ -87,6 +97,15 @@ def build_static_int8(baseline_path, output_path, calibration_inputs, config):
     converted = onnx.load(str(output_path), load_external_data=False)
     onnx.checker.check_model(converted)
     inventory = quantization_inventory(converted)
+    initializers = {t.name: t for t in converted.graph.initializer}
+    inventory["excluded_operations"] = []
+    for name in exclusions:
+        node = next((n for n in converted.graph.node if n.name == name), None)
+        tensor = initializers.get(node.input[1]) if node is not None and len(node.input) > 1 else None
+        inventory["excluded_operations"].append({"name": name, "weight_dtype": onnx.TensorProto.DataType.Name(tensor.data_type) if tensor else None,
+                                                "interpretation": "Excluded from quantizer; neighbouring activation quantization may remain."})
+        if tensor is not None and tensor.data_type != onnx.TensorProto.FLOAT:
+            raise ValueError("Excluded operation did not retain FP32 weights")
     if inventory["qdq_operation_count"] == 0:
         raise ValueError("Quantizer produced no observed QDQ operation boundaries")
     return seconds, inventory

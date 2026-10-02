@@ -1,6 +1,11 @@
-# EdgeLens 0.4 — test your own classifier
+# EdgeLens 0.6 — test your own classifier
 
 Open `start-desktop.cmd` from your project folder after running `setup-windows.cmd`, or open `EdgeLens.exe` from the fully extracted Windows portable release. The project can live on any drive. See [teammate setup](TEAM-SETUP.md). The app is a desktop program with a local engine and SQLite storage. A browser preview is only used during interface development.
+
+For Phase 2, use current source and **Optimize deployment · validation search**.
+The [deployment search guide](DEPLOYMENT-SEARCH.md) covers the three dataset roles,
+constraints, controlled operation exclusions and saved selection evidence.
+The older v0.4.1 portable release predates these features.
 
 ## What you can upload
 
@@ -47,7 +52,7 @@ It chooses the fewest calibration samples outside tolerance, then the lowest max
 
 This is a new selection strategy, not a new low-level compiler. It can improve fidelity on some models, but an actual held-out run may be equal or worse. Accuracy, numerical drift and timing are separate claims. No test result is adjusted to force a positive difference.
 
-A difference of **0.001 percentage points in top-1 accuracy** requires at least 100,000 test images for even a one-prediction step. This prototype accepts up to 200, so it cannot resolve that step. A **0.001 logit error** or **0.001 ms latency** is a different quantity; tiny latency changes can be noise. Use real validation data and independent repetitions before making review claims.
+A difference of **0.001 percentage points in top-1 accuracy** requires at least 100,000 test images for even a one-prediction step. This prototype accepts up to 1,000 images per archive subject to the 512 MiB preprocessing budget, so it cannot resolve that step. A **0.001 logit error** or **0.001 ms latency** is a different quantity; tiny latency changes can be noise. Use real validation data and independent repetitions before making review claims.
 
 ## ESP32: perform the real hardware test
 

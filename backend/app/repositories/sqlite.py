@@ -28,11 +28,11 @@ class Repository:
         with self._connection() as connection:
             connection.execute("PRAGMA journal_mode=WAL")
             version = connection.execute("PRAGMA user_version").fetchone()[0]
-            if version > 3:
+            if version > 4:
                 raise RuntimeError("This database was created by a newer EdgeLens version; upgrade the application.")
             migrations = Path(__file__).parent / "migrations"
             migration = "".join((migrations / filename).read_text(encoding="utf-8") + "\n"
-                                for threshold, filename in ((2, "002_developer_models.sql"), (3, "003_precision_experiments.sql"))
+                                for threshold, filename in ((2, "002_developer_models.sql"), (3, "003_precision_experiments.sql"), (4, "004_deployment_search.sql"))
                                 if version < threshold)
             connection.executescript("""
                 BEGIN IMMEDIATE;
@@ -146,7 +146,7 @@ class Repository:
                 (status, _now(), _json(error) if error is not None else None,
                  _json(report) if report is not None else None, run_id),
             )
-            for table in ("run_metrics", "layer_results", "model_artifacts", "run_candidates", "run_datasets"):
+            for table in ("run_metrics", "layer_results", "model_artifacts", "run_candidates", "run_datasets", "sensitivity_results", "deployment_selections"):
                 connection.execute(f"DELETE FROM {table} WHERE run_id=?", (run_id,))
             if report is not None:
                 self._save_report_rows(connection, run_id, report)
@@ -154,6 +154,14 @@ class Repository:
 
     @staticmethod
     def _save_report_rows(connection: sqlite3.Connection, run_id: str, report: dict):
+        for index, value in enumerate(report.get("sensitivity", [])):
+            connection.execute("INSERT INTO sensitivity_results VALUES (?, ?, ?, ?, ?, ?, ?)",
+                               (run_id, index, value.get("node"), value.get("candidate_id"), value.get("parent_candidate"), value.get("accuracy_recovery_pp"), _json(value)))
+        if report.get("experiment_type") == "deployment_optimization":
+            selection = report["selection"]
+            connection.execute("INSERT INTO deployment_selections VALUES (?, ?, ?, ?, ?, ?, ?)",
+                               (run_id, selection.get("selected"), selection["objective"], selection["decision"],
+                                _json(selection["constraints"]), _json(report.get("diagnostics", {})), _json(selection)))
         for candidate in report.get("candidates", []):
             connection.execute("INSERT INTO run_candidates VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                                (run_id, candidate["id"], candidate.get("name"), candidate.get("candidate_type"), candidate.get("precision"),

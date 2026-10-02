@@ -1,4 +1,51 @@
-# Verification — 24 September 2026, version 0.4
+# Verification — EdgeLens
+
+## Phase 2 — 2 October 2026, source version 0.6.0
+
+- The full 55-test backend suite passed (54 passed, one optional pretrained
+  download test skipped). The Phase 2 checks exercise actual tiny PT2 export,
+  static QDQ, operation diagnostics, single-operation exclusions, validation-only
+  selection, no-feasible-candidate behavior, failed-candidate exclusion, Pareto
+  membership and transactional SQLite 3 → 4 migration preserving history.
+  A follow-up diagnostic-only test covers a two-control budget with zero probes.
+- All 12 frontend transport tests, JavaScript/native entry syntax, asset checks
+  and the version-0.6.0 interface build passed. Native Windows startup and a
+  relocated portable runtime are checked by the existing Windows workflow;
+  inspect the Actions result for the source commit being used.
+- A real MobileNetV2 ImageNet V2 PT2 experiment used the original 100 calibration
+  and 100 validation images. A new 500-image test subset (seed 20261003) excluded
+  all 700 images from the earlier experiment, including duplicate prepared pixels.
+  The original official checkpoint and declared TorchVision spatial/normalization
+  preprocessing were retained. No ImageNet images or model binaries are published.
+- The search built 13 successful candidates: FP32, six static INT8 configurations,
+  four single-operation exclusions and two cumulative exclusions. It compared all
+  53 eligible ONNX operation outputs on three calibration images. Search after
+  initial controls took 90.32 s; total strategy work took 158.32 s in this run.
+- Validation: FP32 74%, initial MinMax/per-channel INT8 67%, Percentile/per-channel
+  INT8 71%, and the best selective candidate 72%. Excluding `node_Conv_909`
+  recovered 1 pp against its 71% parent. Other controls include zero/negative
+  numerical changes. These are validation observations, not held-out improvement
+  or statistical-significance claims.
+- With objective **size** and a maximum validation accuracy loss of **1 pp**, only
+  FP32 was eligible, so the tool retained FP32. Selection was frozen before test
+  inference. The unselected alternatives have validation metrics and no test
+  metrics; the original INT8 control remains a final comparison reference.
+- Fresh held-out top-1: PyTorch **69.2%**, FP32 **69.2%**, initial INT8 **58.8%**.
+  Median host latency was respectively **27.570 / 12.625 / 16.422 ms**; serialized
+  bytes **15,411,324 / 14,202,387 / 4,105,648**. ONNX FP32 agreed with all PyTorch
+  predictions. Timing uses one image, three warm-ups and ten samples at one thread;
+  it is not a device measurement or a reliable tiny-difference speed claim.
+- The FP32 and original INT8 control binaries were byte-identical to the user's
+  Phase 1 artifacts. All 27 saved artifact hashes were verified. SQLite stored
+  13 candidates, three dataset-role records, four sensitivity controls and one
+  deployment selection. HTML/CSV/JSON exports completed. This experiment used an
+  isolated CLI workspace and did not change the user's desktop history database.
+
+This demonstrates actual configuration search, conservative diagnostics and
+constraint handling. It does not establish universal converter superiority.
+There is no new public portable release from this source update; the older
+v0.4.1 ZIP predates Phase 1/2 and cannot read upgraded databases. Use current
+source or rebuild the portable app. Phase 3 physical-device work has not started.
 
 ## Phase 1 — source version 0.5.0
 
@@ -23,10 +70,10 @@
   relocated portable runtime on a Windows runner. Inspect its result for the
   source commit you use.
 
-Phase 1 has fixed FP32/static-INT8 experiments. Layer sensitivity, mixed-precision
-search, automatic constraint selection and physical Pi measurements are not
-implemented by this update. No new portable release is published by this source
-change; v0.4.1 remains the earlier download.
+At the Phase 1 checkpoint, only fixed FP32/static-INT8 experiments were implemented.
+Layer sensitivity, selective quantization search and constraint selection were
+added in Phase 2 above. Physical Pi measurements remain unimplemented. No new
+portable release was published by the Phase 1 source update.
 
 ## 1 October 2026 update — version 0.4.1
 

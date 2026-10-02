@@ -59,7 +59,7 @@ def submit_run(payload: CreateRunRequest, request: Request):
         calibration = repository.get_dataset(payload.calibration_dataset_id) if payload.calibration_dataset_id else None
         if calibration is None or calibration["sha256"] == dataset["sha256"]:
             raise HTTPException(422, "Select a separate calibration dataset. Test data cannot select a converter.")
-    if payload.strategy == "quantization_compare":
+    if payload.strategy in {"quantization_compare", "deployment_search"}:
         if not custom or custom["format"] not in {"pt2", "onnx"}:
             raise HTTPException(422, "FP32/INT8 experiments require an uploaded PT2 or FP32 ONNX classifier")
         split_data = [dataset, repository.get_dataset(payload.calibration_dataset_id), repository.get_dataset(payload.validation_dataset_id)]

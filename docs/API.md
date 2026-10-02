@@ -1,4 +1,4 @@
-# Local API — version 0.5
+# Local API — version 0.6
 
 Base: `/api/v1`. The desktop engine binds a random loopback port and requires its private session cookie/header. Use the CLI for ordinary scripting without needing desktop session credentials. The standalone development server binds `127.0.0.1:8000`.
 
@@ -43,8 +43,29 @@ failures), `datasets` by role, validation/test metrics, raw timings and
 `provenance`. No automatic candidate selection occurs. See
 [precision methodology](PRECISION-EXPERIMENTS.md).
 
+Deployment search uses the same upload and run endpoints:
+
+```json
+{"model_id":"model_returned_by_upload","format":"onnx","target":"raspberry_pi","dataset_id":"ds_test","strategy":"deployment_search","calibration_dataset_id":"ds_calibration","validation_dataset_id":"ds_validation","quantization":{"calibration_method":"MinMax","per_channel":true},"search":{"calibration_methods":["MinMax","Entropy","Percentile"],"try_per_tensor":true,"max_candidates":16,"sensitivity_probes":4,"diagnostic_samples":3,"max_seconds":600},"constraints":{"objective":"size","max_accuracy_loss_pp":1,"max_size_mib":null,"max_host_latency_ms":null}}
+```
+
+`search` rejects unknown options: 2–24 candidates including FP32 and the initial
+INT8 control; 0–8 operation probes; 1–8 diagnostic calibration images; 10–1,800
+seconds as a soft budget checked between operations. Calibration methods must
+be unique; `try_per_tensor` is a strict boolean. Objectives are `tradeoffs`
+(no automatic choice), `size`, `latency` and `accuracy`. Constraints accept finite
+values or null; accuracy loss is 0–100 percentage points relative to **validation
+FP32**, size is >0–100 MiB, host median latency is >0–60,000 ms. Unsupported device
+latency/RAM constraints are rejected.
+
+Schema-4 search reports include `selection`, candidate `eligibility` and
+`pareto_efficient`, `diagnostics`, `sensitivity`, dataset hashes, validation
+timings, and final test results only for the references, initial control and
+selected configuration. No feasible candidate is an explicit result. See
+[deployment search methodology](DEPLOYMENT-SEARCH.md).
+
 Firmware observation protocol: `edgelens.esp32.v1`, `package_id`, model/input SHA256, chip, IDF version, CPU MHz, arena used/capacity bytes, warm-up count, `samples_us`, output score vector. Values must match the saved manifest and be finite. Unknown fields are rejected. Hardware records preserve raw samples and capture/import source. This is report validation, not hardware attestation.
 
 Edge Impulse submission: `artifact_index`, positive `project_id`, exact supported MCU `device`, transient `api_key`, `consent_upload:true`. Refresh: `{"api_key":"..."}`. These actions use only `https://studio.edgeimpulse.com/v1/api`. Redirects are disabled; keys and request bodies are not stored in SQLite. Provider results have `measurement_scope:provider_analysis`.
 
-SQLite migrations preserve old data: schema 2 adds `custom_models`/`edge_records`, and schema 3 adds `run_candidates`/`run_datasets`. API startup marks interrupted jobs failed. No retry synthesizes successful measurements. Model artifacts remain in the data directory; public report paths are sanitized.
+SQLite migrations preserve old data: schema 2 adds `custom_models`/`edge_records`, schema 3 adds `run_candidates`/`run_datasets`, and schema 4 adds `sensitivity_results`/`deployment_selections`. Reports and normalized records are saved transactionally. API startup marks interrupted jobs failed. No retry synthesizes successful measurements. Model artifacts remain in the data directory; public report paths are sanitized.

@@ -24,4 +24,6 @@ def capabilities(request: Request) -> dict:
         "precision_experiments": {"strategies": ["fp32_static_int8"], "sources": ["pt2", "fp32_onnx"],
                                   "dataset_roles": ["calibration", "validation", "test"], "max_candidates": 2,
                                   "automatic_selection": False},
+        "deployment_search": {"available": True, "max_candidates": 24, "selection_split": "validation", "diagnostic_split": "calibration",
+                              "objectives": ["tradeoffs", "latency", "size", "accuracy"], "host_constraints_only": True},
     }

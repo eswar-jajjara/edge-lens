@@ -1,14 +1,14 @@
-# EdgeLens — Model Conversion Studio 0.5.0
+# EdgeLens — Model Conversion Studio 0.6.0
 
 A Windows desktop developer tool for validating image-classifier conversion and preparing real ESP32 benchmarks. Electron starts a private local Python engine automatically; SQLite stores models, datasets, metrics, layer findings and reports. Model binaries stay on disk with SHA256 metadata in SQLite.
 
 ## Open it
 
-**For your teammate:** download [the Windows x64 portable ZIP from v0.4.1](https://github.com/eswar-jajjara/edge-lens/releases/tag/v0.4.1), extract the entire folder and open `EdgeLens.exe`. Python, Node.js and a GPU are not required separately. Each laptop keeps its own data under `%APPDATA%/EdgeLens/data`.
-
-The v0.4.1 portable build predates the new FP32/static-INT8 experiments. Use current GitHub source and the setup below for version 0.5.0.
-
 **From GitHub source:** install 64-bit Python 3.12 and 64-bit Node.js 22.12+, double-click `setup-windows.cmd` once, then `start-desktop.cmd`. Setup installs the tested dependency versions and checks a real tiny PT2/ONNX conversion. `check-windows.cmd` verifies an existing setup. See [the teammate setup guide](docs/TEAM-SETUP.md) for prerequisites, diagnostics and sharing experiments.
+
+**For Phase 2:** use current source, select an uploaded PT2 or FP32 ONNX model, then choose **Optimize deployment · validation search**. Upload separate calibration, validation and test ZIPs. Set a selection objective and accuracy/size/host-latency limits. See [the deployment search guide](docs/DEPLOYMENT-SEARCH.md).
+
+The older [Windows x64 portable ZIP v0.4.1](https://github.com/eswar-jajjara/edge-lens/releases/tag/v0.4.1) predates precision experiments and deployment search. It cannot open newer databases. The source launcher starts the current source even if that older EXE is present. Each laptop keeps its own data under `%APPDATA%/EdgeLens/data`.
 
 **Start with [the developer guide](docs/DEVELOPER-GUIDE.md)** for upload settings, test datasets, conversion comparisons, firmware steps and troubleshooting.
 
@@ -17,6 +17,7 @@ The v0.4.1 portable build predates the new FP32/static-INT8 experiments. Use cur
 - Upload your own `.pt2`, single-file `.onnx` or `.tflite` image classifier with preprocessing and class-count settings. Supported signatures are fixed batch-one, one image input and one class-score output. Only load trusted exports; this is not an untrusted-model sandbox.
 - Compare a PT2 reference against standard ONNX export and an **EdgeLens fidelity-guided conversion strategy**, using separate calibration and held-out datasets. Retain every candidate and the selection rationale; equal/worse results are valid.
 - Compare **FP32 ONNX versus static INT8 QDQ** from PT2 or FP32 ONNX uploads. Keep calibration, validation and test datasets separate; save exact settings, observed quantization coverage, per-metric provenance and failed candidates. See [precision experiments and the reproducible demo](docs/PRECISION-EXPERIMENTS.md).
+- Search calibration methods and weight granularities, measure preserved ONNX operation drift, test selective FP32 weight exclusions and choose a measured configuration under explicit validation constraints. Inspect Pareto trade-offs, controlled sensitivity results and rejection reasons. FP32 or no feasible candidate are valid outcomes; held-out test data never chooses the winner.
 - Benchmark imported ONNX/TFLite models independently. Without PyTorch reference data, conversion loss is explicitly unavailable.
 - Measure labelled top-1 accuracy, prediction agreement, output MAE/max error, conversion/search time, mean/median/p95 host latency and serialized size.
 - Inspect conservative per-operation mappings, an unoptimized diagnostic graph, per-image predictions, runtime versions, hashes and exact settings. Unmapped operations remain unverified.

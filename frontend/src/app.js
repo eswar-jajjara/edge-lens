@@ -35,7 +35,7 @@ function renderLayers() {
   $('#layer-count').textContent = `${rows.length} / ${layers().length} reported layers`;
   $('#layer-list').innerHTML = rows.length ? rows.map(layer => {
     const group = layerGroup(layer.status), label = group === 'pass' ? 'Within tolerance' : group === 'review' ? 'Needs review' : 'Not compared';
-    return `<article class="layer-row"><div class="layer-row-heading"><div><code>${escapeHtml(layer.name)}</code><p>${escapeHtml(layer.operation || 'Operation not available')} <span>· ${escapeHtml(human(layer.profile))}</span></p></div><span class="status ${group === 'pass' ? 'pass' : group === 'review' ? 'warning' : 'neutral'}">${label}</span></div><div class="layer-errors"><span>Mean absolute error <strong>${scientific(layer.mae)}</strong></span><span>Maximum absolute error <strong>${scientific(layer.max_abs)}</strong></span></div><details><summary>Comparison details</summary><p>${escapeHtml(layer.detail || 'No additional diagnostic context was recorded.')}${layer.max_error_index ? `<br>Largest error at [${escapeHtml(layer.max_error_index.join(', '))}] · expected ${scientific(layer.expected_value)} · actual ${scientific(layer.actual_value)}` : ''}</p></details></article>`;
+    return `<article class="layer-row"><div class="layer-row-heading"><div><code>${escapeHtml(layer.name)}</code><p>${escapeHtml(layer.operation || 'Operation not available')} <span>· ${escapeHtml(human(layer.profile))}</span></p></div><span class="status ${group === 'pass' ? 'pass' : group === 'review' ? 'warning' : 'neutral'}">${label}</span></div><div class="layer-errors"><span>Mean absolute error <strong>${scientific(layer.mae)}</strong></span><span>Maximum absolute error <strong>${scientific(layer.max_abs)}</strong></span>${numeric(layer.nrmse) ? `<span>Normalized RMS error <strong>${scientific(layer.nrmse)}</strong></span>` : ''}</div><details><summary>Comparison details</summary><p>${escapeHtml(layer.detail || 'No additional diagnostic context was recorded.')}${layer.sample_count ? `<br>${layer.sample_count} calibration images · ${escapeHtml(layer.scope)}` : ''}${layer.max_error_index ? `<br>Largest error at [${escapeHtml(layer.max_error_index.join(', '))}] · expected ${scientific(layer.expected_value)} · actual ${scientific(layer.actual_value)}` : ''}</p></details></article>`;
   }).join('') : '<div class="empty-inline">No layers to show. Run a benchmark or change the layer filters.</div>';
 }
 function renderChart(metrics) {
@@ -49,7 +49,7 @@ function renderReport() {
   if (!report) { renderLayers(); renderDeveloperReport(); return; }
   const metrics = report.metrics || [], reference = metrics.find(metric => ['pytorch', 'reference', 'baseline'].includes(metric.profile)) || metrics[0];
   const standard = metrics.find(metric => ['fp32', 'standard', 'default', 'standard_conversion'].includes(metric.profile)) || metrics[1];
-  const configured = metrics.find(metric => ['static_int8', 'dashboard', 'configured', 'dashboard_configured'].includes(metric.profile)) || metrics[2];
+  const configured = report.experiment_type === 'deployment_optimization' ? metrics.find(metric => metric.profile === report.selection?.selected) : metrics.find(metric => ['static_int8', 'dashboard', 'configured', 'dashboard_configured'].includes(metric.profile)) || metrics[2];
   const difference = numeric(configured?.accuracy_pct) && numeric(standard?.accuracy_pct) ? configured.accuracy_pct - standard.accuracy_pct : null;
   const compared = layers().filter(layer => numeric(layer.mae) && numeric(layer.max_abs)).length;
   $('#reference-accuracy').innerHTML = `${number(reference?.accuracy_pct)}<span class="metric-unit">%</span>`;
@@ -72,7 +72,7 @@ function renderReport() {
   const environment = report.environment || {}, facts = [ ['Dataset', displayName(report.dataset)], ['Images / classes', `${number(report.dataset?.image_count, 0)} / ${number(report.dataset?.class_count, 0)}`], ['Execution location', demo ? 'Illustrative CPU values' : workerName], ['Platform', environment.platform || environment.system || environment.device || 'See full report'], ['CPU threads', environment.settings?.threads ?? state.run?.request?.settings?.threads ?? '—'], ['Deployment goal', report.target?.name || human(report.target?.id)], ['Device reports', String((report.edge_results || []).filter(x => x.kind === 'hardware').length)] ];
   $('#report-facts').innerHTML = facts.map(([key, value]) => `<dt>${escapeHtml(key)}</dt><dd>${escapeHtml(value)}</dd>`).join('');
   $('#report-methodology').innerHTML = list(report.methodology); $('#report-limitations').innerHTML = list(report.limitations?.length ? report.limitations : ['Server measurements do not establish performance on the target edge device.']);
-  $('#model-artifacts').innerHTML = !demo && report.artifacts?.length ? report.artifacts.map((artifact, index) => `<button class="button secondary" data-artifact="${index}">Save ${escapeHtml(human(artifact.profile))}${artifact.role === 'calibration_statistics' ? '' : ' model'} ↓</button>`).join('') : '<p class="field-help">Converted model downloads appear after a measured run.</p>';
+  $('#model-artifacts').innerHTML = !demo && report.artifacts?.length ? report.artifacts.map((artifact, index) => `<button class="button secondary" data-artifact="${index}">Save ${escapeHtml(human(artifact.profile))}${['calibration_statistics', 'diagnostic_report'].includes(artifact.role) ? ' JSON' : ' model'} ↓</button>`).join('') : '<p class="field-help">Converted model downloads appear after a measured run.</p>';
   renderLayers(); renderDeveloperReport();
 }
 function renderHistory() {
@@ -95,7 +95,7 @@ function updateTarget() {
 function updateReadiness() {
   const model = (state.models || []).find(x => x.id === $('#run-model').value);
   const runtime = model?.format === 'tflite' ? {available:state.capabilities?.imported_tflite_execution,reason:'Install ai-edge-litert for imported TFLite inference.'} : state.capabilities?.runtimes?.[$('#run-format').value];
-  const quantizing = $('#run-strategy').value === 'quantization_compare';
+  const quantizing = ['quantization_compare', 'deployment_search'].includes($('#run-strategy').value);
   const splitIds = [$('#calibration-select').value, $('#validation-select').value, $('#dataset-select').value];
   const calibrationReady = quantizing ? splitIds.every(Boolean) && new Set(splitIds).size === 3 : $('#run-strategy').value !== 'fidelity_search' || ($('#calibration-select').value && $('#calibration-select').value !== $('#dataset-select').value);
   const ready = state.connected && calibrationReady && runtime?.available && $('#dataset-select').value && !state.creating && !state.uploading && !isActive(state.run);
@@ -144,6 +144,9 @@ function showRun(run) {
       $('#validation-select').value = request.validation_dataset_id || '';
       $('#quant-calibration').value = request.quantization?.calibration_method || 'MinMax';
       $('#quant-per-channel').value = String(request.quantization?.per_channel ?? true);
+      const constraintFields = { objective: '#search-objective', max_accuracy_loss_pp: '#constraint-accuracy', max_size_mib: '#constraint-size', max_host_latency_ms: '#constraint-latency' };
+      for (const [key, selector] of Object.entries(constraintFields)) $(selector).value = request.constraints?.[key] ?? (key === 'objective' ? 'tradeoffs' : '');
+      for (const [key, selector] of Object.entries({max_candidates:'#search-candidates',sensitivity_probes:'#search-probes',diagnostic_samples:'#search-samples',max_seconds:'#search-seconds'})) if (request.search?.[key] !== undefined) $(selector).value = request.search[key];
       for (const [key, id] of Object.entries({warmup_runs:'warmup-runs',measured_runs:'measured-runs',threads:'cpu-threads',atol:'atol',rtol:'rtol'})) {
         if (request.settings?.[key] !== undefined) document.getElementById(id).value = request.settings[key];
       }
@@ -182,7 +185,12 @@ async function startBenchmark(event) {
   event.preventDefault(); if ($('#start-benchmark').disabled) return; error(''); state.creating = true; updateReadiness();
   const token = ++state.pollToken;
   const strategy = $('#run-strategy').value;
-  const payload = { model_id: $('#run-model').value, format: $('#run-format').value, target: $('#run-target').value, strategy, calibration_dataset_id: strategy !== 'fixed_profiles' ? $('#calibration-select').value : null, validation_dataset_id: strategy === 'quantization_compare' ? $('#validation-select').value : null, quantization: { calibration_method: $('#quant-calibration').value, per_channel: $('#quant-per-channel').value === 'true' }, dataset_id: $('#dataset-select').value, settings: { warmup_runs: Number($('#warmup-runs').value), measured_runs: Number($('#measured-runs').value), threads: Number($('#cpu-threads').value), atol: Number($('#atol').value), rtol: Number($('#rtol').value) } };
+  const payload = { model_id: $('#run-model').value, format: $('#run-format').value, target: $('#run-target').value, strategy, calibration_dataset_id: strategy !== 'fixed_profiles' ? $('#calibration-select').value : null, validation_dataset_id: ['quantization_compare', 'deployment_search'].includes(strategy) ? $('#validation-select').value : null, quantization: { calibration_method: $('#quant-calibration').value, per_channel: $('#quant-per-channel').value === 'true' }, dataset_id: $('#dataset-select').value, settings: { warmup_runs: Number($('#warmup-runs').value), measured_runs: Number($('#measured-runs').value), threads: Number($('#cpu-threads').value), atol: Number($('#atol').value), rtol: Number($('#rtol').value) } };
+  if (strategy === 'deployment_search') {
+    const optional = selector => $(selector).value.trim() === '' ? null : Number($(selector).value);
+    payload.constraints = { objective: $('#search-objective').value, max_accuracy_loss_pp: optional('#constraint-accuracy'), max_size_mib: optional('#constraint-size'), max_host_latency_ms: optional('#constraint-latency') };
+    payload.search = {max_candidates:Number($('#search-candidates').value),sensitivity_probes:Number($('#search-probes').value),diagnostic_samples:Number($('#search-samples').value),max_seconds:Number($('#search-seconds').value)};
+  }
   try { const run = await api.createRun(payload); if (state.mode !== 'real' || token !== state.pollToken) return; showRun(run); await refreshHistory(); if (isActive(run)) pollRun(run.id, token); }
   catch (cause) { if (state.mode === 'real' && token === state.pollToken) error(describeError(cause)); }
   finally { state.creating = false; updateReadiness(); }
@@ -266,15 +274,19 @@ function modelChanged() {
   const quantSupported = ['pt2', 'onnx'].includes(model?.format) && $('#run-format').value === 'onnx';
   $('#run-strategy').querySelector('[value="fidelity_search"]').disabled = !searchSupported;
   $('#run-strategy').querySelector('[value="quantization_compare"]').disabled = !quantSupported;
+  $('#run-strategy').querySelector('[value="deployment_search"]').disabled = !quantSupported || !state.capabilities?.deployment_search?.available;
   $('#run-strategy').disabled = !searchSupported && !quantSupported;
-  if ((!searchSupported && $('#run-strategy').value === 'fidelity_search') || (!quantSupported && $('#run-strategy').value === 'quantization_compare')) $('#run-strategy').value = 'fixed_profiles';
+  if ((!searchSupported && $('#run-strategy').value === 'fidelity_search') || (!quantSupported && ['quantization_compare', 'deployment_search'].includes($('#run-strategy').value))) $('#run-strategy').value = 'fixed_profiles';
   $('#model-detail').textContent = model ? `${model.input_shape.join(' × ')} · ${model.layout} · ${model.class_count} classes · SHA256 ${model.sha256.slice(0, 16)}…` : 'Optional pretrained preset. Upload your exported classifier to use your own architecture and class order.';
-  const quantizing = $('#run-strategy').value === 'quantization_compare';
+  const optimizing = $('#run-strategy').value === 'deployment_search';
+  const quantizing = ['quantization_compare', 'deployment_search'].includes($('#run-strategy').value);
   $('#calibration-field').hidden = $('#run-strategy').value === 'fixed_profiles';
   $('#validation-field').hidden = !quantizing;
   $('#quantization-controls').hidden = !quantizing;
+  $('#deployment-controls').hidden = !optimizing;
+  $('#deployment-controls').querySelectorAll('input,select').forEach(control => { control.disabled = !optimizing; });
   document.querySelector('label[for="dataset-select"]').textContent = quantizing ? 'Held-out test images · final evaluation' : 'Labelled image dataset';
-  $('#strategy-help').textContent = quantizing ? 'Upload a PT2 or FP32 ONNX classifier. INT8 uses calibration images only. Validation and held-out test metrics are recorded separately; this experiment does not select a winner.' : 'Fidelity search requires an uploaded PT2 model, ONNX output and separate calibration images. It may select the standard converter when no better numerical match is found.';
+  $('#strategy-help').textContent = optimizing ? 'Upload three separate datasets. Calibration determines ranges and diagnostics; validation selects a configuration under your constraints. Use a new untouched test set if you have tuned against earlier test results.' : quantizing ? 'Upload a PT2 or FP32 ONNX classifier. INT8 uses calibration images only. Validation and held-out test metrics are recorded separately; this experiment does not select a winner.' : 'Fidelity search requires an uploaded PT2 model, ONNX output and separate calibration images. It may select the standard converter when no better numerical match is found.';
   updateReadiness();
 }
 function renderCalibration() {
@@ -310,14 +322,23 @@ function renderDeveloperReport() {
   const report = state.report;
   $('#precision-candidates').hidden = !report?.candidates?.length || state.mode === 'demo';
   $('#developer-evidence').hidden = !report || state.mode === 'demo';
+  $('#optimization-evidence').hidden = report?.experiment_type !== 'deployment_optimization' || state.mode === 'demo';
   if (report && state.mode !== 'demo') {
     const selection = report.selection;
-    $('#selection-summary').textContent = report.experiment_type ? 'Fixed FP32/INT8 comparison. No automatic selection and no test-based tuning. Calibration, validation and test evidence are retained separately.' : selection ? `${selection.algorithm}: selected ${human(selection.selected)}. ${selection.objective} Total search: ${number(selection.total_strategy_seconds, 3)} s.` : 'No calibration-based search in this run. Imported models need a PyTorch reference to establish conversion loss.';
+    $('#selection-summary').textContent = report.experiment_type === 'deployment_optimization' ? `${human(selection?.decision)} · selected ${selection?.selected || 'none'} · objective ${human(selection?.objective)}. Validation only; frozen before test.` : report.experiment_type ? 'Fixed FP32/INT8 comparison. No automatic selection and no test-based tuning. Calibration, validation and test evidence are retained separately.' : selection ? `${selection.algorithm}: selected ${human(selection.selected)}. ${selection.objective} Total search: ${number(selection.total_strategy_seconds, 3)} s.` : 'No calibration-based search in this run. Imported models need a PyTorch reference to establish conversion loss.';
     $('#selection-evidence').innerHTML = developerTable(selection?.candidates || [], ['id', 'tolerance_failure_count', 'output_mae', 'output_max_abs', 'export_optimize', 'runtime_optimize']);
     const resolution = report.accuracy_resolution_pp ?? (report.dataset?.image_count ? 100 / report.dataset.image_count : null);
     $('#accuracy-resolution').textContent = `One changed prediction = ${number(resolution, 6)} percentage points on this test set. Output MAE is a separate numerical metric. Small timing differences require repeated runs.`;
     $('#prediction-evidence').innerHTML = developerTable((report.predictions || []).filter(x => x.profile !== 'pytorch').slice(0, 20), ['profile', 'image', 'label', 'prediction', 'reference_prediction', 'max_abs', 'within_tolerance']);
-    $('#candidate-evidence').innerHTML = developerTable((report.candidates || []).map(candidate => ({ name: candidate.name, status: candidate.status, validation_accuracy_pct: candidate.validation_metrics?.accuracy_pct, test_accuracy_pct: candidate.test_metrics?.accuracy_pct, latency_p50_ms: candidate.test_metrics?.latency_p50_ms, qdq_operations: `${candidate.inventory?.qdq_operation_count ?? '—'} / ${candidate.inventory?.eligible_operation_count ?? '—'}`, failure: candidate.failure ? `${candidate.failure.stage}: ${candidate.failure.message}` : '—' })), ['name', 'status', 'validation_accuracy_pct', 'test_accuracy_pct', 'latency_p50_ms', 'qdq_operations', 'failure']);
+    $('#candidate-evidence').innerHTML = developerTable((report.candidates || []).map(candidate => ({ name: candidate.name, status: candidate.status, validation_accuracy_pct: candidate.validation_metrics?.accuracy_pct, validation_latency_ms: candidate.validation_metrics?.latency_p50_ms, test_accuracy_pct: candidate.test_metrics?.accuracy_pct, test_latency_ms: candidate.test_metrics?.latency_p50_ms, qdq_operations: `${candidate.inventory?.qdq_operation_count ?? '—'} / ${candidate.inventory?.eligible_operation_count ?? '—'}`, failure: candidate.failure ? `${candidate.failure.stage}: ${candidate.failure.message}` : '—' })), ['name', 'status', 'validation_accuracy_pct', 'validation_latency_ms', 'test_accuracy_pct', 'test_latency_ms', 'qdq_operations', 'failure']);
+    if (report.experiment_type === 'deployment_optimization') {
+      $('#optimization-decision').textContent = `${human(selection.decision)} · ${selection.selected || 'No candidate selected'} · ${report.search?.attempted_candidates} candidates · ${number(report.search?.total_strategy_seconds, 1)} s. Diagnostics: ${report.diagnostics?.compared_operations ?? 0} operations on ${report.diagnostics?.sample_count ?? 0} calibration images.`;
+      $('#constraint-evidence').innerHTML = developerTable(report.candidates.map(candidate => ({candidate:candidate.id,eligible:candidate.eligibility?.eligible ? 'Yes' : 'No',pareto:candidate.pareto_efficient ? 'Yes' : 'No',reason:candidate.eligibility?.reasons?.join(' ') || 'Meets declared validation constraints'})), ['candidate','eligible','pareto','reason']);
+      $('#sensitivity-evidence').innerHTML = developerTable(report.sensitivity || [], ['node','parent_candidate','candidate_id','status','accuracy_recovery_pp','output_mae_change']);
+      const points = report.candidates.filter(candidate => numeric(candidate.validation_metrics?.accuracy_pct) && numeric(candidate.validation_metrics?.size_bytes));
+      const maximum = Math.max(1, ...points.map(candidate => candidate.validation_metrics.size_bytes / 1048576)) * 1.1;
+      $('#pareto-chart').innerHTML = `<svg viewBox="0 0 720 260" role="img" aria-label="Validation accuracy versus serialized model size" style="width:100%;max-width:800px"><path d="M55 15V220H700" fill="none" stroke="#80978f"/><text x="12" y="20" font-size="12">100%</text><text x="20" y="220" font-size="12">0%</text><text x="260" y="250" font-size="12">Model size (MiB) · 0 to ${number(maximum,1)}</text>${points.map(candidate => `<circle cx="${55 + candidate.validation_metrics.size_bytes / 1048576 / maximum * 640}" cy="${220 - candidate.validation_metrics.accuracy_pct * 2}" r="${candidate.id === selection.selected ? 8 : 5}" fill="${candidate.pareto_efficient ? '#2869b6' : '#78968c'}" stroke="white"><title>${escapeHtml(candidate.name)}: ${number(candidate.validation_metrics.accuracy_pct)}%, ${number(candidate.validation_metrics.size_bytes/1048576)} MiB, ${number(candidate.validation_metrics.latency_p50_ms,3)} ms</title></circle>`).join('')}</svg>`;
+    }
     $('#reproduce-evidence').textContent = JSON.stringify({ model_sha256: report.model?.sha256, dataset_sha256: report.dataset?.sha256, datasets: report.datasets, candidates: report.candidates, settings: report.settings, preprocessing: report.model, versions: report.environment?.versions }, null, 2);
   }
   renderEdge();

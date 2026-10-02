@@ -4,6 +4,9 @@ Use Windows 10/11 **x64**. The portable release and source setup both use the sa
 
 ## Easiest: ready-to-run desktop ZIP
 
+For Phase 2 deployment search, use **current source** as described below. The
+v0.4.1 ZIP runs the earlier feature set and cannot read Phase 1/2 databases.
+
 1. Open [EdgeLens v0.4.1](https://github.com/eswar-jajjara/edge-lens/releases/tag/v0.4.1).
 2. Download **EdgeLens-0.4.1-windows-x64.zip** under Assets. GitHub's automatically generated **Source code** ZIP is the developer source, without installed runtimes.
 3. Extract the complete ZIP to a writable local folder, for example `Documents\EdgeLens`. Do not run inside the ZIP or copy only the EXE.
@@ -42,7 +45,7 @@ Do not copy another laptop's `.venv` or `node_modules`; create them with setup. 
 
 ## If an older build reports a newer database
 
-The v0.4.1 portable build cannot read the Phase 1 database used by v0.5.0.
+The v0.4.1 portable build cannot read the newer databases used by v0.5.0/0.6.0.
 If the error says "This database was created by a newer EdgeLens version",
 close that build and use the current source version. From the project folder,
 run `npm run desktop`, or use the updated `start-desktop.cmd` after source setup.
@@ -52,13 +55,15 @@ The source launcher always starts the current source, even when an older
 Keep `%APPDATA%/EdgeLens/data`; do not delete the database or lower its schema
 version. The current application can open the upgraded database and preserve
 saved reports. A portable build must be rebuilt from the current source using
-`npm run desktop:package` before its EXE can use Phase 1 data.
+`npm run desktop:package` before its EXE can use Phase 1/2 data. Version 0.6.0
+adds SQLite migration 4, preserving previous reports and recording deployment
+selections and operation sensitivity results.
 
 ## What is shared and what is local
 
 - **Shared:** application code, algorithms, supported conversion profiles and pinned runtime versions.
 - **Local to each laptop:** uploaded models, datasets, SQLite database, history, generated reports and converted artifacts under `%APPDATA%\EdgeLens\data`. Downloading GitHub source does not download someone else's experiments.
-- **Compare results fairly:** use the same model file, preprocessing, calibration/test ZIPs, conversion profile and settings. Numerical results may have small differences across CPUs. Latency changes with CPU speed, thread settings and background load; identical software does not guarantee identical timing.
+- **Compare results fairly:** use the same model file, preprocessing, calibration/validation/test ZIPs, conversion profile, constraints and settings. Numerical results may have small differences across CPUs. Latency changes with CPU speed, thread settings and background load; identical software does not guarantee identical timing.
 - **Share an experiment:** exchange the original model and labelled datasets separately, or export the HTML/CSV/JSON report. Close EdgeLens before deliberately copying/backing up the complete data folder; do not merge individual SQLite files.
 - **ESP32:** firmware preparation is included. Actual flashing still needs the board's correct USB driver, ESP-IDF toolchain and chip selection. A generated package is not a measured board result.
 - **Windows TFLite:** model import/inference is included. PyTorch-to-TFLite conversion still requires the separate optional Linux worker.

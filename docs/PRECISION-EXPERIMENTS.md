@@ -1,5 +1,9 @@
 # FP32 and static INT8 experiments
 
+This page covers the fixed Phase 1 comparison. For validation constraints,
+operation sensitivity and selective quantization, see
+[Phase 2 deployment search](DEPLOYMENT-SEARCH.md).
+
 EdgeLens 0.5.0 extends the existing desktop benchmark engine with a fixed FP32
 versus static INT8 ONNX experiment. It records actual results without selecting a
 winner. Sensitivity search, mixed precision and constraint selection are later
