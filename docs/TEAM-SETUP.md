@@ -40,6 +40,20 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/setup-desktop.ps1 -P
 
 Do not copy another laptop's `.venv` or `node_modules`; create them with setup. The setup refuses to reuse an incompatible Python environment instead of deleting it. If you intentionally installed a different Python environment, rename its `backend\.venv` folder while EdgeLens is closed, then rerun setup.
 
+## If an older build reports a newer database
+
+The v0.4.1 portable build cannot read the Phase 1 database used by v0.5.0.
+If the error says "This database was created by a newer EdgeLens version",
+close that build and use the current source version. From the project folder,
+run `npm run desktop`, or use the updated `start-desktop.cmd` after source setup.
+The source launcher always starts the current source, even when an older
+`release/win-unpacked/EdgeLens.exe` exists.
+
+Keep `%APPDATA%/EdgeLens/data`; do not delete the database or lower its schema
+version. The current application can open the upgraded database and preserve
+saved reports. A portable build must be rebuilt from the current source using
+`npm run desktop:package` before its EXE can use Phase 1 data.
+
 ## What is shared and what is local
 
 - **Shared:** application code, algorithms, supported conversion profiles and pinned runtime versions.

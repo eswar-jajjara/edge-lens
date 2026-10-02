@@ -1,10 +1,7 @@
 @echo off
 setlocal
 cd /d "%~dp0"
-if exist "release\win-unpacked\EdgeLens.exe" (
-  start "" "release\win-unpacked\EdgeLens.exe"
-  exit /b
-)
+rem Source checkout: always launch the current source, never an older packaged EXE.
 if not exist "node_modules\electron\dist\electron.exe" (
   echo Double-click setup-windows.cmd first. See docs\TEAM-SETUP.md.
   pause
