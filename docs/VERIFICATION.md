@@ -8,6 +8,10 @@
   selection, no-feasible-candidate behavior, failed-candidate exclusion, Pareto
   membership and transactional SQLite 3 → 4 migration preserving history.
   A follow-up diagnostic-only test covers a two-control budget with zero probes.
+- The real private desktop engine started with an isolated copy of the older
+  schema-3 database, migrated it to schema 4 and preserved all six saved runs.
+  Its unauthenticated API rejected access. The original desktop database was
+  unchanged, and the test-owned engine process was stopped afterward.
 - All 12 frontend transport tests, JavaScript/native entry syntax, asset checks
   and the version-0.6.0 interface build passed. Native Windows startup and a
   relocated portable runtime are checked by the existing Windows workflow;

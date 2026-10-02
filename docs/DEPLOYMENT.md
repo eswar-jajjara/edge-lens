@@ -2,6 +2,11 @@
 
 ## Windows desktop (primary)
 
+For version 0.6.0 / Phase 2, use current source setup or rebuild the portable app.
+The v0.4.1 download described below predates precision experiments and deployment
+search, and cannot read upgraded databases. Preserve the data folder and use the
+current application; do not downgrade the SQLite schema to open an older EXE.
+
 Teammates can use [the Windows portable release](https://github.com/eswar-jajjara/edge-lens/releases/tag/v0.4.1) without installing Python/Node.js, or run `setup-windows.cmd` after downloading the source. See [team setup](TEAM-SETUP.md). The supported distribution is Windows 10/11 x64 with the pinned Python 3.12 CPU runtime. Each laptop uses its own data folder; shared source does not synchronize SQLite.
 
 `npm run desktop:package` creates `release/win-unpacked/EdgeLens.exe` and its supporting files. Distribute the entire folder, not only the executable. The build bundles Electron, a portable copy of the active virtual environment's Python runtime, and the CPU ML packages. Python source remains available for PyTorch export introspection.
