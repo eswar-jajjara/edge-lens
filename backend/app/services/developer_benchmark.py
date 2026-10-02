@@ -185,8 +185,9 @@ def _split_metadata(dataset, arrays, role):
 def _provenance(metric, split):
     """Each reported metric declares both evidence origin and interpretation."""
     accuracy = {"accuracy_pct", "accuracy_delta_pp", "agreement_pct", "correct_count", "sample_count", "output_mae", "output_max_abs", "tolerance_failure_count", "within_tolerance", "accuracy_delta_vs_fp32_pp"}
-    timing = {"latency_mean_ms", "latency_p50_ms", "latency_p95_ms", "latency_samples_ms"}
-    keys = accuracy | timing | {"size_bytes", "conversion_seconds", "peak_ram_bytes", "device_latency_ms"}
+    timing = {"latency_mean_ms", "latency_p50_ms", "latency_p95_ms", "latency_samples_ms", "latency_min_ms", "latency_max_ms", "latency_p25_ms", "latency_p75_ms", "latency_stddev_ms"}
+    memory = {"process_rss_baseline_bytes", "process_rss_sampled_peak_bytes", "process_rss_increase_bytes"}
+    keys = memory | accuracy | timing | {"size_bytes", "conversion_seconds", "peak_ram_bytes", "device_latency_ms"}
     metric["provenance"] = {}
     for key in sorted(keys):
         value = metric.get(key)
@@ -194,7 +195,9 @@ def _provenance(metric, split):
         if key in accuracy:
             origin.update(split=split, sample_count=metric.get("sample_count"), method="Labelled top-1 or raw output comparison on identical preprocessed inputs")
         elif key in timing:
-            origin.update(method="Invocation and output copy on one fixed preprocessed image; warm-ups excluded")
+            origin.update(method="Invocation and output copy while cycling up to 16 shared preprocessed images; warm-ups excluded")
+        elif key in memory:
+            origin.update(status=metric.get("memory_evidence_status", "UNAVAILABLE"), method=metric.get("memory_method"), scope="whole_engine_process")
         elif key == "size_bytes":
             origin.update(method="Serialized artifact bytes on disk; not runtime RAM or total firmware flash")
         elif key == "conversion_seconds":
@@ -239,7 +242,7 @@ def _run_quantization_comparison(request, dataset, output_dir):
             class_order[folder] = index
     splits = {role: _split_metadata(value, split_inputs[role][0], role) for role, value in split_data.items()}
     config = request.get("quantization", {"calibration_method": "MinMax", "per_channel": True})
-    candidates, profiles, artifacts, layers = [], [], [], []
+    candidates, profiles, artifacts, layers, structural = [], [], [], [], []
     baseline_path, int8_path = output_dir / "fp32.onnx", output_dir / "static-int8.onnx"
     fixed_config = {"runtime": "onnxruntime", "execution_provider": "CPUExecutionProvider", "graph_optimization": "ORT_ENABLE_ALL",
                     "threads": settings["threads"], "inter_op_threads": 1, "execution_mode": "ORT_SEQUENTIAL"}
@@ -269,9 +272,15 @@ def _run_quantization_comparison(request, dataset, output_dir):
                          conversion_seconds=conversion_seconds, inventory=q.quantization_inventory(graph))
         profiles.append({"profile": candidate["id"], "label": candidate["name"], "path": path, "infer": infer,
                          "conversion_seconds": conversion_seconds, "candidate": candidate})
+        inventory = onnx_inventory(path)
+        reference_inventory = onnx_inventory(baseline_path) if baseline_path.is_file() else None
+        structural.append({'profile': candidate['id'], 'inventory': inventory,
+                           'comparison': compare_onnx(reference_inventory, inventory) if reference_inventory else None,
+                           'comparison_status': 'MEASURED' if reference_inventory else 'UNAVAILABLE'})
         for i, node in enumerate(graph.graph.node):
             layers.append({"profile": candidate["id"], "name": node.name or f"node_{i}", "operation": node.op_type,
                            "status": "unmapped", "mae": None, "max_abs": None,
+                           "reason_code": "quantization_helper" if node.op_type in {"QuantizeLinear", "DequantizeLinear"} else "inventory_only",
                            "detail": "Operator inventory only; numerical correspondence was not established for this entry. See measured diagnostic entries and controlled sensitivity evidence where available."})
 
     try:
@@ -388,7 +397,7 @@ def _run_quantization_comparison(request, dataset, output_dir):
                         _provenance(value, role)
         if valid_profiles:
             timing_failures = {}
-            timings = b._time_profiles([(p["profile"], p["infer"], split_inputs["test"][0][0]) for p in valid_profiles], settings, timing_failures)
+            timings = b._time_profiles([(p["profile"], p["infer"], split_inputs["test"][0][:16]) for p in valid_profiles], settings, timing_failures)
             for metric in metrics:
                 metric.update(timings.get(metric["profile"], {}))
                 if metric["profile"] in timing_failures:
@@ -429,7 +438,7 @@ def _run_quantization_comparison(request, dataset, output_dir):
                                 "processor": platform.processor() or "not reported", "logical_cpus": os.cpu_count(),
                                 "python": platform.python_version(), "versions": _versions(), "settings": settings, "provider": "CPUExecutionProvider", **host_environment()},
                 "target": b._target(request["target"], "onnx"), "metrics": metrics, "layers": layers, "predictions": predictions,
-                "artifacts": artifacts, "edge_results": [],
+                "artifacts": artifacts, "edge_results": [], "structural": structural,
                 "methodology": ["Fixed FP32 and static S8S8 QDQ configurations; standard PyTorch ONNX exporter optimize=True when source is PT2. No additional FP32 graph rewriting.",
                                 "Only calibration inputs determine INT8 ranges. Shape inference precedes quantization; graph optimization during preprocessing is disabled.",
                                 "Calibration, validation and held-out test archives and exact preprocessed images must be disjoint. Identical declared preprocessing and class order are used.",
@@ -460,7 +469,7 @@ def _run_quantization_comparison(request, dataset, output_dir):
                                      "Calibration alone determines ranges and activation diagnostics. Validation alone determines controlled recovery, constraints, Pareto membership and selection.",
                                      "One-operation probes hold other quantizer settings and calibration ranges fixed. Cumulative exclusions use operations with observed validation improvement in accuracy or, on ties, output MAE.",
                                      "Selection is frozen before held-out inference. PyTorch, FP32, the initial INT8 control and the selected configuration receive final test results; other candidates retain validation evidence only.",
-                                     "Host latency used for selection is measured on the first validation image with rotating candidate order. Final host latency uses the first test image. Diagnostic unoptimized sessions are never timed as deployment artifacts."] + report["methodology"][-3:]
+                                     "Host latency used for selection is measured on the up to 16 validation images with rotating candidate order. Final host latency cycles up to 16 test images. Diagnostic unoptimized sessions are never timed as deployment artifacts."] + report["methodology"][-3:]
             report["limitations"][1] = "Diagnostics compare preserved ONNX operation outputs on bounded calibration samples, not arbitrary PyTorch layer identity. Propagated activation drift is not causal proof; control effects are specific to this validation subset. Excluded operations can still receive quantized neighbouring activations."
         return report
     finally:
@@ -500,7 +509,8 @@ def _diagnostics(ep, first, profiles, spec, settings):
     rows = []
     allowed = {"convolution": {"Conv"}, "conv2d": {"Conv"}, "relu": {"Relu"}, "linear": {"Gemm"}, "add": {"Add"}, "mul": {"Mul"}, "sigmoid": {"Sigmoid"}}
     for profile in profiles:
-        values, names = {}, {}
+        values, names, reasons = {}, {}, {}
+        capture_error = None
         if not profile.get("export_optimize", True):
             try:
                 graph = onnx.shape_inference.infer_shapes(onnx.load(str(profile["path"])))
@@ -513,11 +523,13 @@ def _diagnostics(ep, first, profiles, spec, settings):
                         # Match the exact FX definition, not a substring of another node's name.
                         if origin.startswith(f"%{node.name} :"):
                             matching.append(target)
+                    reasons[node.name] = 'no_exporter_origin' if not matching else 'decomposed_operation' if len(matching) > 1 else 'unsupported_operator_mapping'
                     op = str(node.target).split(".")[-2] if "." in str(node.target) else ""
                     if len(matching) == 1 and matching[0].domain in ("", "ai.onnx") and matching[0].op_type in allowed.get(op, set()):
                         target = matching[0]
                         if len(target.output) == 1 and target.output[0] in infos and node.name in captures:
                             names[node.name] = target.output[0]
+                            reasons[node.name] = "mapped_boundary"
                 del graph.graph.output[:]
                 # Tensor capture and extra graph outputs are bounded independently.
                 for name in dict.fromkeys(names.values()):
@@ -526,19 +538,26 @@ def _diagnostics(ep, first, profiles, spec, settings):
                     session = b._ort_session(ort, graph.SerializeToString(), settings["threads"], True)
                     keys = list(dict.fromkeys(names.values()))
                     values = dict(zip(keys, session.run(keys, {session.get_inputs()[0].name: first})))
-            except Exception:
+            except Exception as exc:
+                capture_error = f"{type(exc).__name__}: {str(exc)[:200]}"
                 names, values = {}, {}
         candidates = [(n.name, str(n.target), captures.get(n.name), values.get(names.get(n.name))) for n in nodes]
         candidates.append(("output.logits", "ClassifierOutput", reference_output, profile["infer"](first)))
         for name, op, ref, candidate in candidates:
             row = {"profile": profile["profile"], "name": name, "operation": op, "status": "unmapped", "mae": None, "max_abs": None,
-                   "detail": "No proven one-to-one tensor mapping; fusion/decomposition or capture limit may apply.", "sample_index": 0}
+                   "detail": "No proven one-to-one tensor mapping; fusion/decomposition or capture limit may apply.", "sample_index": 0,
+                   "reason_code": "diagnostic_capture_failed" if capture_error else "reference_capture_budget" if ref is None else "optimized_graph_mapping_unavailable" if profile.get('export_optimize', True) else reasons.get(name, 'no_exporter_origin'),
+                   "expected_shape": list(ref.shape) if ref is not None else None,
+                   "actual_shape": list(candidate.shape) if candidate is not None else None}
+            if capture_error: row['detail'] = capture_error
+            if ref is not None and candidate is not None and ref.shape != candidate.shape:
+                row.update(status='mismatch', reason_code='shape_mismatch', detail='Mapped boundary output shape differs.')
             if ref is not None and candidate is not None and ref.shape == candidate.shape:
                 diff = np.abs(candidate.astype(np.float64) - ref.astype(np.float64))
                 finite = np.isfinite(diff).all()
                 row.update(status=("pass" if np.allclose(candidate, ref, atol=settings["atol"], rtol=settings["rtol"]) else "drift") if finite else "nonfinite",
                            mae=float(diff.mean()) if finite else None, max_abs=float(diff.max()) if finite else None,
-                           expected_shape=list(ref.shape), actual_shape=list(candidate.shape),
+                           reason_code="measured_boundary", expected_shape=list(ref.shape), actual_shape=list(candidate.shape),
                            detail="Final output in measured runtime." if name == "output.logits" else "Exact FX node and single compatible operator; diagnostic runtime disables graph optimization. First test image only.")
                 if finite:
                     index = np.unravel_index(np.argmax(diff), diff.shape)
@@ -638,19 +657,19 @@ def run_developer_benchmark(request, dataset, output_dir):
                                   "role": "diagnostics_only", "export_optimize": False, "runtime_optimize": False})
             else:
                 layers = [{"profile": p["profile"], "name": n.name, "operation": str(n.target), "status": "unmapped", "mae": None, "max_abs": None,
-                           "detail": "TFLite intermediate tensors are not aligned to exported PyTorch nodes."} for p in profiles[1:] for n in ep.graph.nodes if n.op == "call_function"]
+                           "reason_code": "cross_format_mapping_unavailable", "detail": "TFLite intermediate tensors are not aligned to exported PyTorch nodes."} for p in profiles[1:] for n in ep.graph.nodes if n.op == "call_function"]
         else:
             if strategy == "fidelity_search" or request["format"] != source["format"]:
                 raise ValueError("Imported ONNX/TFLite models are benchmarked in their existing format. Supply PT2 for conversion comparisons.")
             if source["format"] == "onnx":
                 infer, graph = onnx_session(path, settings["threads"])
                 layers = [{"profile": "imported", "name": n.name or f"node_{i}", "operation": n.op_type, "status": "unmapped", "mae": None, "max_abs": None,
-                           "detail": "Operator inventory only. Original PyTorch tensors were not supplied."} for i, n in enumerate(graph.graph.node)]
+                           "reason_code": "reference_not_supplied", "detail": "Operator inventory only. Original PyTorch tensors were not supplied."} for i, n in enumerate(graph.graph.node)]
             else:
                 infer, interpreter, quantize = tflite_session(path, settings["threads"])
                 # Runtime tensor inventory uses the public API; it is not a layer equivalence claim.
                 layers = [{"profile": "imported", "name": x["name"], "operation": "TFLite tensor", "status": "unmapped", "mae": None, "max_abs": None,
-                           "detail": f"Tensor shape {x['shape'].tolist()}; dtype {np.dtype(x['dtype']).name}; quantization {x['quantization']}. Original PyTorch tensors unavailable."} for x in interpreter.get_tensor_details()]
+                           "reason_code": "reference_not_supplied", "detail": f"Tensor shape {x['shape'].tolist()}; dtype {np.dtype(x['dtype']).name}; quantization {x['quantization']}. Original PyTorch tensors unavailable."} for x in interpreter.get_tensor_details()]
             profiles = [{"profile": "imported", "label": f"Uploaded {source['format'].upper()} classifier", "path": source_path,
                          "infer": checked(infer, spec), "conversion_seconds": None}]
         reference_graph = fx_inventory(ep) if ep is not None else None
@@ -685,6 +704,12 @@ def run_developer_benchmark(request, dataset, output_dir):
                 "environment": {"benchmark_scope": "host_cpu", "platform": platform.platform(), "python": platform.python_version(), "versions": versions, "settings": settings, **host_environment()},
                 "target": b._target(request["target"], request["format"]), "metrics": metrics, "layers": layers, "predictions": predictions,
                 "artifacts": artifacts, "edge_results": [], "structural": structural,
+                "candidate_schema_version": 1,
+                "conversion_candidates": [{"id": p['profile'], "format": p['path'].suffix.removeprefix('.'),
+                     "status": 'completed', "precision": p.get('precision', 'fp32'),
+                     "artifact_sha256": b._hash_file(p['path']), "configuration": p.get('configuration', {}),
+                     "conversion_seconds": p.get('conversion_seconds'), "evidence_status": 'MEASURED'} for p in profiles],
+                "calibration": _split_metadata(calibration, calibration_arrays, 'calibration') if calibration and request['format'] == 'tflite' else None,
                 "methodology": ["Same uploaded model, declared preprocessing and labelled test images across all profiles.",
                                 "Preprocessing: resize with bilinear interpolation; (pixel * scale - mean) / std; declared RGB/grayscale and NCHW/NHWC layout.",
                                 "Calibration-guided selection uses separate images and no held-out labels or outputs; exact preprocessed overlap is rejected." if selection else "No calibration-guided selection was requested.",

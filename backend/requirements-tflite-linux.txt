@@ -1,8 +1,8 @@
 # Separate Python 3.11 Linux worker. Never install into the Windows environment.
 -r requirements.txt
 litert-torch==0.9.4
-torch==2.13.0
-torchvision==0.28.0
+torch==2.9.1
+torchvision==0.24.1
 torchao==0.17.0
 ai-edge-litert==2.2.0
 onnx==1.23.0

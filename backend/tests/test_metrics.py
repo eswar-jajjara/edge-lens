@@ -56,7 +56,7 @@ class MetricTests(unittest.TestCase):
         calls = []
         profiles = [(name, lambda _, name=name: calls.append(name), 0) for name in ("a", "b", "c")]
         ticks = iter(range(0, 18_000_000, 1_000_000))
-        with patch("app.services.benchmark.time.perf_counter_ns", side_effect=lambda: next(ticks)):
+        with patch("app.services.benchmark.time.perf_counter_ns", side_effect=lambda: next(ticks)), patch("app.services.host_measurements.measure_memory", return_value={"memory_evidence_status": "UNAVAILABLE"}):
             measured = _time_profiles(profiles, {"warmup_runs": 1, "measured_runs": 3})
         self.assertEqual(calls[:3], ["a", "b", "c"])
         self.assertEqual(calls[3:], ["a", "b", "c", "b", "c", "a", "c", "a", "b"])

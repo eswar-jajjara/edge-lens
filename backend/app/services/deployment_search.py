@@ -160,7 +160,7 @@ def explore(*, baseline_path, candidates, profiles, artifacts, output_dir, calib
 
     valid_profiles = [profile for profile in profiles if profile.get("candidate", {}).get("status") == "built" and profile["candidate"].get("validation_metrics")]
     failures = {}
-    timing = b._time_profiles([(profile["profile"], profile["infer"], validation_arrays[0]) for profile in valid_profiles], settings, failures) if valid_profiles else {}
+    timing = b._time_profiles([(profile["profile"], profile["infer"], validation_arrays[:16]) for profile in valid_profiles], settings, failures) if valid_profiles else {}
     for profile in valid_profiles:
         candidate = profile["candidate"]
         if candidate["id"] in failures:

@@ -32,8 +32,10 @@ def compare_activations(fp32_path, quantized_path, arrays, settings, sample_limi
                "mapping": "Unique preserved ONNX node name, operation type and output boundary; no PyTorch layer mapping."}
         other = quant_nodes.get(node.name)
         if not node.name or float_counts[node.name] != 1 or quant_counts[node.name] != 1 or other is None or other.op_type != node.op_type or len(node.output) != 1 or len(other.output) != 1:
+            row["reason_code"] = "ambiguous_or_missing_preserved_operation"
             row["detail"] = "No unambiguous preserved operation correspondence was established."
         elif len(pairs) >= node_limit:
+            row["reason_code"] = "diagnostic_node_budget"
             row["detail"] = "Operation was outside the bounded diagnostic node budget."
         else:
             row.update(float_tensor=node.output[0], quantized_tensor=other.output[0])
@@ -86,14 +88,14 @@ def compare_activations(fp32_path, quantized_path, arrays, settings, sample_limi
                     row["expected_shape"] = list(ref.shape)
             for row, accumulator in zip(chunk, stats):
                 count = accumulator["elements"]
-                row.update(status="drift" if accumulator["failures"] else "pass", provenance="MEASURED", sample_count=len(samples),
+                row.update(status="drift" if accumulator["failures"] else "pass", provenance="MEASURED", reason_code="measured_preserved_boundary", sample_count=len(samples),
                            mae=accumulator["sum_abs"] / count, max_abs=accumulator["max"],
                            nrmse=math.sqrt(accumulator["sum_squared"] / count) / max(math.sqrt(accumulator["reference_squared"] / count), 1e-12),
                            tolerance_failure_count=accumulator["failures"],
                            detail="Operation output before downstream QDQ, compared on calibration images with graph optimization disabled. Propagated drift is not proof of this operation being its cause.")
         except Exception as exc:
             for row in chunk:
-                row.update(status="unmapped", provenance="UNAVAILABLE", mae=None, max_abs=None, nrmse=None,
+                row.update(status="unmapped", provenance="UNAVAILABLE", reason_code="diagnostic_capture_failed", mae=None, max_abs=None, nrmse=None,
                            detail=f"Diagnostic capture unavailable: {type(exc).__name__}: {str(exc)[:250]}")
     measured = sum(row["provenance"] == "MEASURED" for row in rows)
     return {"status": "completed" if measured == len(rows) and measured else "partial" if measured else "unavailable",

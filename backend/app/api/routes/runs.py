@@ -70,6 +70,10 @@ def submit_run(payload: CreateRunRequest, request: Request):
             raise HTTPException(422, "Upload and select calibration, validation and test datasets")
         if len({value["sha256"] for value in split_data}) != 3:
             raise HTTPException(422, "Calibration, validation and test archives must be separate")
+    if custom and custom['format'] == 'pt2' and payload.format == 'tflite':
+        calibration = repository.get_dataset(payload.calibration_dataset_id) if payload.calibration_dataset_id else None
+        if calibration is None or calibration['sha256'] == dataset['sha256']:
+            raise HTTPException(422, 'TFLite INT8 conversion requires separate calibration images in the Linux worker')
     runtime = request.app.state.capability_provider().get(payload.format, {})
     if custom and custom["format"] == "tflite":
         from app.services.benchmark import _present

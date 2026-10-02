@@ -2,13 +2,16 @@ import copy
 from pathlib import Path
 import tempfile
 import unittest
+import importlib.util
+import os
 from app.services.structural import compare_onnx
 
 
 class StructuralTests(unittest.TestCase):
+    @unittest.skipUnless(importlib.util.find_spec('onnx') and importlib.util.find_spec('onnxruntime'), 'Optional ONNX runtime not installed')
     def test_known_faults_and_unchanged_control(self):
         from app.services.fault_validation import run_fault_suite
-        with tempfile.TemporaryDirectory() as tmp:
+        with tempfile.TemporaryDirectory(dir=os.environ.get('EDGELENS_TEST_TMP')) as tmp:
             result = run_fault_suite(Path(tmp) / 'faults')
             self.assertTrue(result['passed'], result['cases'])
             rows = {r['fault']: r for r in result['cases']}

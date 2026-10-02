@@ -5,8 +5,8 @@ import io
 import json
 from app.services.evidence import diagnostic_groups, evidence_sections
 
-METRICS = ["label", "accuracy_pct", "correct_count", "sample_count", "accuracy_delta_pp", "accuracy_delta_vs_fp32_pp", "reference_profile", "agreement_pct", "latency_mean_ms", "latency_p50_ms", "latency_p95_ms", "conversion_seconds", "size_bytes", "output_mae", "output_max_abs", "tolerance_failure_count", "artifact_sha256", "dataset_sha256", "evaluation_split"]
-LAYERS = ["profile", "name", "operation", "status", "mae", "max_abs", "nrmse", "sample_count", "scope", "sample_index", "expected_shape", "actual_shape", "max_error_index", "expected_value", "actual_value", "detail"]
+METRICS = ["label", "accuracy_pct", "correct_count", "sample_count", "accuracy_delta_pp", "accuracy_delta_vs_fp32_pp", "reference_profile", "agreement_pct", "latency_mean_ms", "latency_p50_ms", "latency_p95_ms", "latency_min_ms", "latency_max_ms", "latency_p25_ms", "latency_p75_ms", "latency_stddev_ms", "timing_input_count", "timing_evidence_status", "process_rss_sampled_peak_bytes", "memory_evidence_status", "conversion_seconds", "size_bytes", "output_mae", "output_max_abs", "tolerance_failure_count", "artifact_sha256", "dataset_sha256", "evaluation_split"]
+LAYERS = ["profile", "name", "operation", "status", "reason_code", "mae", "max_abs", "nrmse", "sample_count", "scope", "sample_index", "expected_shape", "actual_shape", "max_error_index", "expected_value", "actual_value", "detail"]
 SENSITIVITY = ["node", "operation", "candidate_id", "parent_candidate", "status", "accuracy_recovery_pp", "output_mae_change", "excluded_nodes", "evidence_split", "interpretation"]
 PREDICTIONS = ["profile", "sample_index", "image", "label", "prediction", "reference_prediction", "max_abs", "within_tolerance"]
 SELECTION = ["id", "export_optimize", "runtime_optimize", "tolerance_failure_count", "output_mae", "output_max_abs", "export_seconds"]
@@ -32,7 +32,7 @@ def report_csv(report):
     row(["EdgeLens experiment report", report.get("run_id")])
     row(["Evidence sections", evidence_sections(report)])
     row(["Diagnostic coverage by candidate", [{k: v for k, v in g.items() if k not in {"measured", "inventory", "unavailable"}} for g in diagnostic_groups(report)]])
-    for key in ("model", "dataset", "datasets", "summary", "environment", "settings", "edge_estimate_request", "accuracy_resolution_pp", "search", "diagnostics", "test_data_used_for_selection"):
+    for key in ("model", "dataset", "datasets", "summary", "environment", "settings", "edge_estimate_request", "accuracy_resolution_pp", "search", "diagnostics", "structural", "conversion_candidates", "calibration", "test_data_used_for_selection"):
         row([key, report.get(key)])
     selection = report.get("selection") or {}
     row(["selection", {k: v for k, v in selection.items() if k != "candidates"}])
@@ -110,10 +110,12 @@ def report_html(report):
 {selection_section}
 <h2>3. Layer diagnostics</h2><p>{compared} numerical comparisons recorded across candidates; {len(drifts)} require review. Inventory and unavailable captures are shown separately below. Counts across candidates are repeated graph entries, not unique model layers. An observed difference at a boundary is evidence, not proof of its root cause.</p>
 {layer_sections}
+<h3>Structural graph comparison · separate from numerical fidelity</h3><p>MEASURED inventories list operators, tensor shapes and connections. MATCHED means only the declared boundary checks matched; it is not a numerical pass. CHANGED can be a legal converter optimization. UNAVAILABLE mappings remain explicit.</p>
+{''.join('<h4>' + text(s.get('profile')) + '</h4>' + table((s.get('comparison') or {}).get('rows', []), ['name', 'operation', 'status', 'reason_code', 'changes', 'expected_shape', 'actual_shape', 'expected_parents', 'actual_parents']) + '<details><summary>Graph inventory and mapping evidence</summary>' + pretty(s) + '</details>' for s in report.get('structural', []))}
 <h2>4. Per-image predictions</h2>{table(report.get('predictions', []), PREDICTIONS)}
 <h2>5. ESP32 — {evidence['esp32']['status']}</h2>{table(hardware, HARDWARE)}<p>{text(evidence["esp32"]["reason"]) if not hardware else ""}</p><p>Device-reported Invoke-only samples and output on one fixed image. USB capture and imported JSON retain separate provenance. Neither carries cryptographic hardware attestation. Arena usage is not total RAM; one-image agreement is not dataset accuracy.</p>{pretty(hardware)}
 <h2>6. Edge Impulse — {evidence['edge_impulse']['status']}</h2><h3>Test estimate choice and destination</h3>{pretty(report.get('edge_estimate_request', {'enabled': False, 'note': 'No estimate choice recorded in this older test.'}))}<p>{text(evidence["edge_impulse"]["verification"])}</p><p>A Yes request is not a completed estimate. ESTIMATED provider resources and timing are separate from physical measurements. Accuracy is linked only when the uploaded SHA-256 matches an explicitly evaluated held-out artifact. Older unverified records retain UNAVAILABLE accuracy links.</p>{pretty(provider)}
 <h2>7. Reproduce this experiment</h2><p>Use the identical model and dataset hashes, preprocessing, tolerances, runtime versions and settings. Exported PT2 must come from a trusted source. Download the corresponding artifacts from the saved run.</p>
 {pretty({'model': report.get('model'), 'dataset': report.get('dataset'), 'datasets': report.get('datasets'), 'settings': report.get('settings'), 'environment': report.get('environment'), 'artifacts': report.get('artifacts')})}
 <h3>Metric provenance</h3>{pretty({x.get('profile'): x.get('provenance') for x in report.get('metrics', [])})}
-<h2>Raw host latency samples (ms)</h2>{pretty({x.get('profile'): x.get('latency_samples_ms') for x in report.get('metrics', [])})}{detail}</html>'''
+<h2>Host memory measurement method</h2><p>Sampled process RSS includes all loaded models, inputs and runtime state. A separate inference pass samples memory without perturbing the recorded timing pass. This is neither model-only RAM nor a guaranteed true peak.</p>{pretty({x.get("profile"): {k:v for k,v in x.items() if k.startswith("memory_") or k.startswith("process_rss_") or k.startswith("timing_")} for x in report.get("metrics", [])})}<h2>Raw host latency samples (ms)</h2>{pretty({x.get('profile'): x.get('latency_samples_ms') for x in report.get('metrics', [])})}{detail}</html>'''

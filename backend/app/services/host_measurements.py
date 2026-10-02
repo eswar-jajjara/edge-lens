@@ -67,7 +67,7 @@ def measure_memory(infer, sample, runs=30):
                 'process_rss_increase_bytes': max(0, peak - baseline), 'memory_sample_count': len(observations),
                 'memory_evidence_status': 'MEASURED', 'memory_scope': 'Current engine process; all loaded models, datasets and runtimes included.',
                 'memory_method': 'Separate 30-inference pass; RSS sampled every 10 ms and after each invocation. Sampled maximum, not guaranteed true peak or model-only allocation.'}
-    except OSError as exc:
+    except Exception as exc:
         return {'memory_evidence_status': 'UNAVAILABLE', 'memory_method': str(exc)}
 
 
