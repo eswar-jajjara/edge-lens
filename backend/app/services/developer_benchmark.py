@@ -156,7 +156,8 @@ def evaluate_profile(profile, arrays, reference_outputs, labels, dataset, settin
         for key in ("accuracy_delta_pp", "agreement_pct", "output_mae", "output_max_abs", "within_tolerance", "tolerance_failure_count"):
             metric[key] = None
     metric.update(profile=profile["profile"], label=profile["label"], conversion_seconds=profile["conversion_seconds"],
-                  size_bytes=profile["path"].stat().st_size)
+                  size_bytes=profile["path"].stat().st_size,
+                  artifact_sha256=b._hash_file(profile["path"]), dataset_sha256=dataset["sha256"], evaluation_split="test")
     return metric, predictions
 
 
@@ -657,6 +658,7 @@ def run_developer_benchmark(request, dataset, output_dir):
             metric, per_image = evaluate_profile(p, arrays, reference_outputs, labels, dataset, settings, ep is not None)
             predictions.extend(per_image)
             metric.update(**timings[p["profile"]])
+            _provenance(metric, "test")
             metrics.append(metric)
         summary = comparison_summary(metrics[1], metrics[2]) if ep is not None else {"conclusion": "Measured uploaded classifier only. No original PyTorch reference: conversion loss and converter superiority cannot be established."}
         if ep is not None:
@@ -664,7 +666,7 @@ def run_developer_benchmark(request, dataset, output_dir):
             summary["output_max_abs_delta"] = metrics[2]["output_max_abs"] - metrics[1]["output_max_abs"]
         versions = _versions()
         return {"schema_version": 2, "source": "measured", "created_at": datetime.now(timezone.utc).isoformat(),
-                "model": spec, "dataset": {k: dataset[k] for k in ("id", "name", "sha256", "image_count", "class_count")},
+                "model": spec, "dataset": _split_metadata(dataset, arrays, "test"),
                 "summary": summary, "selection": selection, "accuracy_resolution_pp": 100 / len(labels),
                 "environment": {"benchmark_scope": "host_cpu", "platform": platform.platform(), "python": platform.python_version(), "versions": versions, "settings": settings},
                 "target": b._target(request["target"], request["format"]), "metrics": metrics, "layers": layers, "predictions": predictions,

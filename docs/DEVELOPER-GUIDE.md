@@ -78,9 +78,9 @@ Raspberry Pi remains a selectable deployment goal; a Pi hardware runner is futur
 
 ## Optional Edge Impulse
 
-On the same hardware page, enter your Edge Impulse project ID, supported target MCU identifier and project API key. The identifier is the `mcu` value from your project's `latencyDevices` API data; do not assume a generic `esp32` string is accepted. Confirm the explicit upload checkbox and submit the selected TFLite model. Fetch the completed job after processing. Network access, project permissions and supported targets depend on your account.
+Open a completed TFLite run, select its evaluated artifact, and enter the project ID and API key on Edge hardware. Click **Load supported targets** and select a device returned by your project. Confirm the explicit upload checkbox, submit, then fetch the completed result after processing. The engine requires an explicit held-out metric hash matching the uploaded bytes; old runs without this evidence need re-evaluation.
 
-Only that explicit action sends the model to `studio.edgeimpulse.com`. The key stays in the open UI session/request memory and is not saved in SQLite or reports. Results retain provider provenance and do not substitute for measurements on your board. Integration behavior is tested with mocked provider replies; a live account call is still unverified.
+Keys stay in request/session memory. SQLite stores the model/evaluation hash, target, timestamp, provider URL and sanitized response, with credentials removed. Resources are ESTIMATED; ESP32 is UNAVAILABLE without a physical observation. See [the Phase 3 guide](EDGE-PROFILING.md) for the 32x32 fixture, exact workflow and remaining live/Linux experiments. Live integration is unverified until a real response is recorded.
 
 ## Use it as a command-line developer tool
 

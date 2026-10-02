@@ -4,6 +4,7 @@ from fastapi.responses import Response, FileResponse
 from app.schemas.runs import CreateRunRequest
 from app.services.validation import QueueFull
 from app.services.reports import report_csv, report_html
+from app.services.evidence import diagnostic_groups, evidence_sections
 
 router = APIRouter()
 
@@ -19,6 +20,8 @@ def required_run(request, run_id):
 
 def public_report(report, run_id):
     value = dict(report)
+    value["evidence_sections"] = evidence_sections(report)
+    value["diagnostic_summary"] = [{k: v for k, v in g.items() if k not in {"measured", "inventory", "unavailable"}} for g in diagnostic_groups(report)]
     value["artifacts"] = [
         {**{key: item for key, item in artifact.items() if key != "path"},
          "download_url": f"/api/v1/runs/{run_id}/artifacts/{index}"}

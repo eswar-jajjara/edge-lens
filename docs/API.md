@@ -1,4 +1,4 @@
-# Local API — version 0.6
+# Local API — version 0.7
 
 Base: `/api/v1`. The desktop engine binds a random loopback port and requires its private session cookie/header. Use the CLI for ordinary scripting without needing desktop session credentials. The standalone development server binds `127.0.0.1:8000`.
 
@@ -69,3 +69,7 @@ Firmware observation protocol: `edgelens.esp32.v1`, `package_id`, model/input SH
 Edge Impulse submission: `artifact_index`, positive `project_id`, exact supported MCU `device`, transient `api_key`, `consent_upload:true`. Refresh: `{"api_key":"..."}`. These actions use only `https://studio.edgeimpulse.com/v1/api`. Redirects are disabled; keys and request bodies are not stored in SQLite. Provider results have `measurement_scope:provider_analysis`.
 
 SQLite migrations preserve old data: schema 2 adds `custom_models`/`edge_records`, schema 3 adds `run_candidates`/`run_datasets`, and schema 4 adds `sensitivity_results`/`deployment_selections`. Reports and normalized records are saved transactionally. API startup marks interrupted jobs failed. No retry synthesizes successful measurements. Model artifacts remain in the data directory; public report paths are sanitized.
+
+### Phase 3 provider evidence
+
+`POST /edge/impulse/targets` accepts `{project_id, api_key}` and returns only supported `{mcu,name}` pairs from the project information API. It does not upload a model or store the key. Profile submission now returns 409 before network access unless the selected TFLite SHA-256 has a complete, matching held-out metric. It also verifies the bytes actually sent. Job/result records carry `evaluated_artifact`, model hash, target, provider URL and timestamp. Results retain `raw_response` (credential/request-byte fields removed) and `response_sha256`. Public reports include derived `evidence_sections` and candidate-scoped `diagnostic_summary`; these additions require no SQLite migration. Old runs remain readable with unavailable accuracy links.

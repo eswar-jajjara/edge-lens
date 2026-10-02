@@ -30,6 +30,7 @@
     packageUrl: id => `${base()}/edge/packages/${encodeURIComponent(id)}/download`,
     captureSerial: (id,port) => request(`/edge/packages/${encodeURIComponent(id)}/capture`, {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({port}),signal:AbortSignal.timeout(20000)}),
     importDeviceReport: (id,payload) => request(`/edge/packages/${encodeURIComponent(id)}/import`, {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)}),
+    profileTargets: (project_id,api_key) => request('/edge/impulse/targets', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({project_id,api_key}),signal:AbortSignal.timeout(60000)}),
     startProfile: (id,payload) => request(`${runPath(id)}/edge/impulse`, {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload),signal:AbortSignal.timeout(60000)}),
     refreshProfile: (id,api_key) => request(`/edge/impulse/${encodeURIComponent(id)}/refresh`, {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({api_key}),signal:AbortSignal.timeout(60000)}),
     createRun: payload => request('/runs', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }),

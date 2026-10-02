@@ -11,6 +11,17 @@ function client(fetch) {
 }
 const success = body => ({ ok: true, json: async () => body });
 
+test('provider target discovery keeps the transient key in the request body', async () => {
+  let requestedUrl, options;
+  const api = client(async (url, value) => { requestedUrl = url; options = value; return success([{mcu:'target',name:'Target'}]); });
+  const targets = await api.profileTargets(7, 'test_credential');
+  assert.equal(requestedUrl, 'https://api.example/api/v1/edge/impulse/targets');
+  assert.equal(options.method, 'POST');
+  assert.deepEqual(JSON.parse(options.body), {project_id:7,api_key:'test_credential'});
+  assert.equal(targets[0].mcu, 'target');
+  assert.ok(!requestedUrl.includes('test_credential'));
+});
+
 test('configured API base is used for capabilities, datasets and history', async () => {
   const urls = [], api = client(async url => { urls.push(url); return success([]); });
   await api.health(); await api.capabilities(); await api.datasets(); await api.runs();

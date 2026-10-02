@@ -4,7 +4,7 @@ const api = window.EdgeLensAPI;
 const desktop = Boolean(window.EDGELENS_CONFIG?.desktop);
 const workerName = desktop ? 'this computer' : 'the server CPU';
 const state = { mode: 'demo', page: 'overview', report: window.EdgeLensDemoReport, run: null, capabilities: null, datasets: [], models: [], edgeRecords: [], history: [], connected: false, creating: false, uploading: false, pollToken: 0, connectionToken: 0 };
-const pages = { edge: ['Edge hardware', 'Measure the real board. Keep estimates separate.', 'Edge hardware'], overview: ['Validation overview', 'See what conversion changes. Keep the evidence.', 'Overview'], diagnostics: ['Layer diagnostics', 'Find the differences behind the final predictions.', 'Layer diagnostics'], report: ['Reports & history', 'Keep the complete record of each experiment.', 'Reports & history'] };
+const pages = { edge: ['Edge hardware', 'Review estimated resources and separately recorded device evidence.', 'Edge hardware'], overview: ['Validation overview', 'See what conversion changes. Keep the evidence.', 'Overview'], diagnostics: ['Layer diagnostics', 'Find the differences behind the final predictions.', 'Layer diagnostics'], report: ['Reports & history', 'Keep the complete record of each experiment.', 'Reports & history'] };
 const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
 const numeric = value => typeof value === 'number' && Number.isFinite(value);
 const number = (value, places = 2) => numeric(value) ? value.toLocaleString('en-US', { maximumFractionDigits: places, minimumFractionDigits: places }) : '—';
@@ -29,14 +29,27 @@ function showPage(page) {
 function navigate(page) { location.hash = page; showPage(page); }
 function layerGroup(status) { const value = String(status).toLowerCase(); if (['pass', 'within_tolerance', 'matched'].includes(value)) return 'pass'; if (['drift', 'nonfinite', 'review', 'fail', 'failed', 'warning', 'exceeds_tolerance', 'mismatch'].includes(value)) return 'review'; return 'unmapped'; }
 function layers() { return state.report?.layers || []; }
+function measuredLayer(layer) { return numeric(layer.mae) && numeric(layer.max_abs); }
 function renderLayers() {
+  const previous = $('#layer-candidate').value;
+  const profiles = [...new Set(layers().map(x => x.profile))];
+  $('#layer-candidate').innerHTML = '<option value="all">All candidates</option>' + profiles.map(x => `<option value="${escapeHtml(x)}">${escapeHtml(human(x))}</option>`).join('');
+  if (profiles.includes(previous)) $('#layer-candidate').value = previous;
+  const candidate = $('#layer-candidate').value, view = $('#layer-view').value;
+  const scopeRows = layers().filter(x => candidate === 'all' || x.profile === candidate);
+  const measured = scopeRows.filter(measuredLayer), diagnostic = scopeRows.filter(x => x.scope === 'calibration_diagnostic');
   const search = $('#layer-search').value.trim().toLowerCase(), filter = $('#layer-filter').value;
-  const rows = layers().filter(layer => (filter === 'all' || layerGroup(layer.status) === filter) && `${layer.name} ${layer.operation} ${layer.profile}`.toLowerCase().includes(search));
-  $('#layer-count').textContent = `${rows.length} / ${layers().length} reported layers`;
-  $('#layer-list').innerHTML = rows.length ? rows.map(layer => {
+  const rows = scopeRows.filter(layer => (view === 'all' || (view === 'measured' ? measuredLayer(layer) || layer.scope === 'calibration_diagnostic' || layer.status === 'nonfinite' : !measuredLayer(layer) && layer.scope !== 'calibration_diagnostic' && layer.status !== 'nonfinite')) && (filter === 'all' || layerGroup(layer.status) === filter) && `${layer.name} ${layer.operation} ${layer.profile}`.toLowerCase().includes(search));
+  const limit = state.layerLimit || 100;
+  $('#layer-count').textContent = `${Math.min(rows.length, limit)} shown / ${rows.length} filtered entries`;
+  const diagnosticMeasured = diagnostic.filter(measuredLayer).length;
+  $('#layer-explanation').textContent = `${measured.length} numerical comparisons in this candidate selection. ${diagnostic.length ? `Calibration capture: ${diagnosticMeasured} / ${diagnostic.length} eligible operation entries. ` : ''}Inventory lists graph operations without numerical evidence. “Not compared” means a comparison is unavailable, not a conversion failure. Candidate graphs repeat operations; Q/DQ helpers are not additional original layers.`;
+  $('#layer-list').innerHTML = rows.length ? rows.slice(0, limit).map(layer => {
     const group = layerGroup(layer.status), label = group === 'pass' ? 'Within tolerance' : group === 'review' ? 'Needs review' : 'Not compared';
-    return `<article class="layer-row"><div class="layer-row-heading"><div><code>${escapeHtml(layer.name)}</code><p>${escapeHtml(layer.operation || 'Operation not available')} <span>· ${escapeHtml(human(layer.profile))}</span></p></div><span class="status ${group === 'pass' ? 'pass' : group === 'review' ? 'warning' : 'neutral'}">${label}</span></div><div class="layer-errors"><span>Mean absolute error <strong>${scientific(layer.mae)}</strong></span><span>Maximum absolute error <strong>${scientific(layer.max_abs)}</strong></span>${numeric(layer.nrmse) ? `<span>Normalized RMS error <strong>${scientific(layer.nrmse)}</strong></span>` : ''}</div><details><summary>Comparison details</summary><p>${escapeHtml(layer.detail || 'No additional diagnostic context was recorded.')}${layer.sample_count ? `<br>${layer.sample_count} calibration images · ${escapeHtml(layer.scope)}` : ''}${layer.max_error_index ? `<br>Largest error at [${escapeHtml(layer.max_error_index.join(', '))}] · expected ${scientific(layer.expected_value)} · actual ${scientific(layer.actual_value)}` : ''}</p></details></article>`;
-  }).join('') : '<div class="empty-inline">No layers to show. Run a benchmark or change the layer filters.</div>';
+    const evidence = measuredLayer(layer) ? 'MEASURED' : 'UNAVAILABLE';
+    return `<article class="layer-row"><div class="layer-row-heading"><div><code>${escapeHtml(layer.name)}</code><p>${escapeHtml(layer.operation || 'Operation not available')} <span>· ${escapeHtml(human(layer.profile))} · ${evidence}</span></p></div><span class="status ${group === 'pass' ? 'pass' : group === 'review' ? 'warning' : 'neutral'}">${label}</span></div><div class="layer-errors"><span>Mean absolute error <strong>${scientific(layer.mae)}</strong></span><span>Maximum absolute error <strong>${scientific(layer.max_abs)}</strong></span>${numeric(layer.nrmse) ? `<span>Normalized RMS error <strong>${scientific(layer.nrmse)}</strong></span>` : ''}</div><details><summary>Comparison details</summary><p>${escapeHtml(layer.detail || 'No additional diagnostic context was recorded.')}${layer.sample_count ? `<br>${layer.sample_count} images · ${escapeHtml(layer.scope || 'See recorded comparison context')}` : ''}${layer.max_error_index ? `<br>Largest error at [${escapeHtml(layer.max_error_index.join(', '))}] · expected ${scientific(layer.expected_value)} · actual ${scientific(layer.actual_value)}` : ''}</p></details></article>`;
+  }).join('') : '<div class="empty-inline">No entries in this view. Choose another candidate or open the operation inventory.</div>';
+  $('#more-layers').hidden = rows.length <= limit;
 }
 function renderChart(metrics) {
   const maximum = Math.max(1, ...metrics.map(metric => numeric(metric.latency_p50_ms) ? metric.latency_p50_ms : 0));
@@ -55,8 +68,9 @@ function renderReport() {
   $('#reference-accuracy').innerHTML = `${number(reference?.accuracy_pct)}<span class="metric-unit">%</span>`;
   $('#accuracy-difference').innerHTML = `${delta(difference)}<span class="metric-unit">pp</span>`;
   $('#configured-latency').innerHTML = `${number((report.experiment_type ? configured : configured || reference)?.latency_p50_ms, 3)}<span class="metric-unit">ms</span>`;
-  $('#layer-coverage').innerHTML = `${compared}<span class="metric-unit">/ ${layers().length}</span>`;
-  $('#layer-coverage-note').textContent = demo ? 'Compared / reported · illustrative sample only' : 'Numerically compared / reported layer entries';
+  const diagnostic = report.diagnostics;
+  $('#layer-coverage').innerHTML = diagnostic?.eligible_operations ? `${diagnostic.compared_operations}<span class="metric-unit">/ ${diagnostic.eligible_operations}</span>` : `${compared}`;
+  $('#layer-coverage-note').textContent = demo ? 'Illustrative comparisons only' : diagnostic?.eligible_operations ? `${diagnostic.profile} · ${diagnostic.sample_count} calibration images; final-output checks are separate` : 'Numerical comparisons recorded; inventory shown separately';
   $('#active-model').textContent = displayName(report.model); $('#active-dataset').textContent = displayName(report.dataset);
   $('#active-location').textContent = demo ? 'Illustrative CPU values' : `Measured on ${workerName}`;
   const candidateFailures = (report.candidates || []).filter(candidate => candidate.status === 'failed').length;
@@ -231,6 +245,9 @@ $('#demo-mode').addEventListener('click', () => switchMode('demo')); $('#real-mo
 $('#connect-server').addEventListener('click', connect); $('#benchmark-form').addEventListener('submit', startBenchmark); $('#upload-dataset').addEventListener('click', uploadDataset);
 $('#run-target').addEventListener('change', updateTarget); $('#run-format').addEventListener('change', modelChanged); $('#dataset-select').addEventListener('change', updateDatasetDescription);
 $('#layer-search').addEventListener('input', renderLayers); $('#layer-filter').addEventListener('change', renderLayers);
+$('#layer-candidate').addEventListener('change', () => { state.layerLimit = 100; renderLayers(); });
+$('#layer-view').addEventListener('change', () => { state.layerLimit = 100; renderLayers(); });
+$('#more-layers').addEventListener('click', () => { state.layerLimit = (state.layerLimit || 100) + 100; renderLayers(); });
 $('#refresh-history').addEventListener('click', async () => { try { error(''); await refreshHistory(); } catch (cause) { error(describeError(cause)); } });
 $('#run-history').addEventListener('click', event => { const button = event.target.closest('[data-run-id]'); if (button) loadRun(button.dataset.runId); });
 $('#resume-poll').addEventListener('click', () => { if (state.run?.id) loadRun(state.run.id); });
@@ -345,7 +362,7 @@ function renderDeveloperReport() {
 }
 function renderEdge() {
   const active = state.mode === 'real' && state.run?.status === 'completed' && state.report;
-  $('.device-latency strong').textContent = 'Not measured';
+  $('.device-latency strong').textContent = 'UNAVAILABLE';
   $('#edge-workspace').hidden = !active;
   $('#edge-empty').hidden = Boolean(active);
   if (!active) return;
@@ -355,7 +372,7 @@ function renderEdge() {
   if ([...$('#edge-artifact').options].some(x => x.value === previous)) $('#edge-artifact').value = previous;
   $('#prepare-edge').disabled = !state.report.artifacts?.some(x => x.format === 'tflite');
   $('#submit-ei').disabled = $('#prepare-edge').disabled;
-  $('#edge-format-note').textContent = $('#prepare-edge').disabled ? 'This run has no TFLite artifact. Import and benchmark a TFLite classifier to prepare ESP32 firmware or request Edge Impulse analysis.' : 'Choose the exact TFLite artifact to associate with device and provider evidence.';
+  $('#edge-format-note').textContent = $('#prepare-edge').disabled ? 'This run has no evaluated TFLite artifact. Import and benchmark a TFLite classifier before requesting provider estimates. Phase 2 ONNX candidates require a separate validated TFLite path.' : 'Choose the exact TFLite artifact to associate with device and provider evidence.';
   const oldPackage = $('#edge-package').value;
   const records = state.edgeRecords || [];
   $('#edge-package').innerHTML = '<option value="">Select a prepared firmware package</option>' + records.filter(x => x.kind === 'package').map(x => `<option value="${escapeHtml(x.id)}">${escapeHtml(human(x.profile))} · ${escapeHtml(x.id.slice(0, 16))} · ${x.arena_capacity_bytes / 1024} KiB arena</option>`).join('');
@@ -365,10 +382,10 @@ function renderEdge() {
   if (records.some(x => x.id === oldJob)) $('#ei-job').value = oldJob;
   const results = state.report.edge_results || [];
   const hardware = results.filter(x => x.kind === 'hardware');
-  $('#hardware-evidence').innerHTML = developerTable(hardware.map(x => ({ ...x, chip: x.device_report?.chip })), ['profile', 'chip', 'source', 'latency_p50_ms', 'latency_p95_ms', 'arena_used_bytes', 'output_max_abs', 'within_tolerance']);
-  $('#ei-evidence').innerHTML = results.filter(x => x.kind === 'edge_impulse_result').map(x => `<article class="provider-result"><strong>Edge Impulse · provider analysis · ${escapeHtml(x.device)}</strong><pre>${escapeHtml(JSON.stringify(x.provider_result, null, 2))}</pre><p>Provider estimates are separate from your board measurements.</p></article>`).join('') || '<p class="field-help">No Edge Impulse analysis recorded. An account and explicit model upload are required.</p>';
+  $('#hardware-evidence').innerHTML = hardware.length ? developerTable(hardware.map(x => ({ ...x, chip: x.device_report?.chip })), ['profile', 'chip', 'source', 'latency_p50_ms', 'latency_p95_ms', 'arena_used_bytes', 'output_max_abs', 'within_tolerance']) : '<p class="field-help">ESP32 — UNAVAILABLE. No physical benchmark recorded for this run. Deployment is a later add-on.</p>';
+  $('#ei-evidence').innerHTML = results.filter(x => x.kind === 'edge_impulse_result').map(x => `<article class="provider-result"><strong>Edge Impulse · ESTIMATED · ${escapeHtml(x.device)}</strong><pre>${escapeHtml(JSON.stringify(x.provider_result, null, 2))}</pre><p>Profiled model SHA-256: ${escapeHtml(x.model_sha256)} · Recorded: ${escapeHtml(x.created_at)}. Accuracy link: ${escapeHtml(state.report.evidence_sections?.edge_impulse?.records?.find(r => r.id === x.id)?.accuracy_link || 'UNAVAILABLE')}.</p></article>`).join('') || '<p class="field-help">UNAVAILABLE · Tested with mocks only; no live profile recorded in this run. Enter your project/key, load targets and explicitly consent to upload an evaluated TFLite artifact.</p>';
   const latest = hardware.at(-1);
-  $('.device-latency strong').textContent = latest ? `${number(latest.latency_p50_ms, 3)} ms · ${latest.device_report.chip}` : 'Not measured';
+  $('.device-latency strong').textContent = latest ? `${number(latest.latency_p50_ms, 3)} ms · ${latest.device_report.chip}` : 'UNAVAILABLE';
 }
 async function refreshEdgeRecords() {
   const id = state.run?.id;
@@ -411,8 +428,15 @@ $('#import-edge').addEventListener('click', event => edgeAction(event.currentTar
   const file = $('#edge-json').files[0]; if (!file || file.size > 200000) throw new Error('Choose a device JSON report up to 200 KB.');
   await api.importDeviceReport(selectedPackage(), JSON.parse(await file.text())); await reloadEdgeReport(); return 'Imported device report saved with its import provenance.';
 }));
+$('#load-ei-targets').addEventListener('click', event => edgeAction(event.currentTarget, async () => {
+  const targets = await api.profileTargets(Number($('#ei-project').value), $('#ei-key').value);
+  $('#ei-device').innerHTML = '<option value="">Select a provider target</option>' + targets.map(x => `<option value="${escapeHtml(x.mcu)}">${escapeHtml(x.name)}</option>`).join('');
+  return targets.length ? 'Supported targets loaded from your project. This is provider analysis, not a measurement of your board.' : 'No profiling targets returned for this project.';
+}));
+$('#ei-project').addEventListener('input', () => { $('#ei-device').innerHTML = '<option value="">Load targets for this project</option>'; $('#ei-consent').checked = false; });
 $('#submit-ei').addEventListener('click', event => edgeAction(event.currentTarget, async () => {
   if (!$('#ei-consent').checked) throw new Error('Confirm you want to send this model to Edge Impulse.');
+  if (!$('#ei-device').value) throw new Error('Load and select a supported profiling target.');
   const job = await api.startProfile(state.run.id, {artifact_index: selectedArtifact(), project_id: Number($('#ei-project').value), device: $('#ei-device').value.trim(), api_key: $('#ei-key').value, consent_upload: true});
   await refreshEdgeRecords(); $('#ei-job').value = job.id; return 'Edge Impulse job submitted. Check the result after processing finishes.';
 }));

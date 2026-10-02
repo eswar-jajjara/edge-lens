@@ -1,10 +1,13 @@
 from pathlib import Path
+import hashlib
+import json
 from typing import Literal
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import Response
 from pydantic import BaseModel, ConfigDict, Field, SecretStr
 from app.services import hardware, edge_impulse
 from app.services.benchmark import _hash_file
+from app.services.evidence import artifact_evaluation
 
 router = APIRouter()
 
@@ -32,6 +35,19 @@ class ProfileRequest(BaseModel):
 class ProfileRefresh(BaseModel):
     model_config = ConfigDict(extra="forbid")
     api_key: SecretStr = Field(min_length=8, max_length=300)
+
+
+class TargetRequest(ProfileRefresh):
+    project_id: int = Field(ge=1, strict=True)
+
+
+@router.post("/edge/impulse/targets")
+def profile_targets(payload: TargetRequest, request: Request):
+    require_local(request)
+    try:
+        return edge_impulse.list_targets(payload.project_id, payload.api_key.get_secret_value())
+    except ValueError as exc:
+        raise HTTPException(502, str(exc)) from exc
 
 
 def require_local(request):
@@ -142,23 +158,38 @@ def submit_profile(run_id: str, payload: ProfileRequest, request: Request):
     require_local(request)
     run = completed_run(request, run_id)
     artifact, path = artifact_path(request, run, payload.artifact_index)
+    evaluation = artifact_evaluation(run["report"], artifact)
+    if evaluation["status"] != "MEASURED":
+        raise HTTPException(409, evaluation["reason"])
     try:
-        job_id = edge_impulse.start_profile(path, payload.project_id, payload.device, payload.api_key.get_secret_value())
+        job_id = edge_impulse.start_profile(path, payload.project_id, payload.device, payload.api_key.get_secret_value(), expected_sha256=artifact["sha256"])
     except ValueError as exc:
         raise HTTPException(502, str(exc)) from exc
     return request.app.state.repository.save_edge_record(run_id, "edge_impulse_job", {"project_id": payload.project_id, "job_id": job_id, "device": payload.device,
-                  "artifact_index": payload.artifact_index, "profile": artifact["profile"], "model_sha256": artifact["sha256"], "source": "edge_impulse", "measurement_scope": "provider_analysis"})
+                  "artifact_index": payload.artifact_index, "profile": artifact["profile"], "model_sha256": artifact["sha256"],
+                  "evaluated_artifact": evaluation, "source": "edge_impulse", "measurement_scope": "provider_analysis",
+                  "evidence_status": "ESTIMATED", "provider_url": edge_impulse.BASE + f"/{payload.project_id}/jobs/profile-tflite"})
 
 
 @router.post("/edge/impulse/{record_id}/refresh")
 def refresh_profile(record_id: str, payload: ProfileRefresh, request: Request):
     require_local(request)
     job = record(request, record_id, "edge_impulse_job")
+    run = completed_run(request, job["run_id"])
+    artifact, _ = artifact_path(request, run, job["artifact_index"])
+    if artifact["sha256"] != job["model_sha256"]:
+        raise HTTPException(409, "Profile job artifact hash does not match this run")
     try:
         result = edge_impulse.profile_result(job["project_id"], job["job_id"], payload.api_key.get_secret_value())
     except ValueError as exc:
         raise HTTPException(502, str(exc)) from exc
+    result = edge_impulse.redact_response(result, payload.api_key.get_secret_value())
     result_record = {k: job[k] for k in ("project_id", "job_id", "device", "artifact_index", "profile", "model_sha256")}
+    result_record.update(evaluated_artifact=job.get("evaluated_artifact"), evidence_status="ESTIMATED",
+                         provider_url=edge_impulse.BASE + f"/{job['project_id']}/jobs/profile-tflite/{job['job_id']}/result",
+                         raw_response=result,
+                         response_sha256=hashlib.sha256(json.dumps(result, sort_keys=True, allow_nan=False).encode()).hexdigest(),
+                         response_redaction="Credentials and request model bytes removed; otherwise provider response structure preserved.")
     result_record.update(source="edge_impulse", measurement_scope="provider_analysis", provider_result=result,
                          notes=["Edge Impulse resource/profile analysis. This is not a measurement from your USB-connected ESP32.", "Provider timings and memory estimates are not substituted for local host or physical-device metrics."])
     return request.app.state.repository.save_edge_record(job["run_id"], "edge_impulse_result", result_record)

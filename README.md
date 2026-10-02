@@ -1,6 +1,6 @@
-# EdgeLens — Model Conversion Studio 0.6.0
+# EdgeLens — Deployment Validation Tool 0.7.0
 
-A Windows desktop developer tool for validating image-classifier conversion and preparing real ESP32 benchmarks. Electron starts a private local Python engine automatically; SQLite stores models, datasets, metrics, layer findings and reports. Model binaries stay on disk with SHA256 metadata in SQLite.
+A Windows desktop developer tool for validating image-classifier conversion and investigating edge readiness with separately labelled provider estimates. Electron starts a private local Python engine automatically; SQLite stores models, datasets, metrics, layer findings and reports. Model binaries stay on disk with SHA256 metadata in SQLite.
 
 ## Open it
 
@@ -55,3 +55,7 @@ The custom integration suite runs tiny real PT2/ONNX, static INT8 QDQ, and FP32/
 Packaging copies Python sources because the exporter inspects them. This is an unsigned portable development build, not a signed installer. Fresh Windows setup, native desktop startup and a relocated portable runtime are verified in [Windows CI](https://github.com/eswar-jajjara/edge-lens/actions/runs/36851712108); see [verification](docs/VERIFICATION.md). Use the setup/runtime check on each teammate's laptop.
 
 See [architecture and frameworks](docs/ARCHITECTURE.md), [methodology](docs/BENCHMARKING.md), [API](docs/API.md) and [deployment](docs/DEPLOYMENT.md).
+
+## Phase 3 checkpoint
+
+See [edge profiling and evidence](docs/EDGE-PROFILING.md) for exact artifact matching, target discovery, candidate-scoped diagnostics and the small 32x32 profiling fixture. Reports separate host MEASURED, provider ESTIMATED and ESP32 UNAVAILABLE. Live Edge Impulse profiling, a QDQ ONNX probe and validated Linux TFLite INT8 conversion remain separate experiments; this checkpoint does not claim them complete. Existing saved history remains on SQLite schema 4.

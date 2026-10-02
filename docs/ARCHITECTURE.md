@@ -65,3 +65,7 @@ backend/tests/test_developer.py         Actual tiny PT2/ONNX/TFLite integration 
 - USB/device JSON is validated against an exact prepared package. The system does not cryptographically attest hardware or infer full dataset accuracy from one image.
 - API keys are transient. Edge Impulse uploads occur only on the explicit UI action. Provider estimates never become host or physical-device timings.
 - Raspberry Pi is currently a deployment goal. A Pi device runner remains future work.
+
+## Phase 3 evidence views
+
+The shared developer evaluator records exact artifact and test dataset hashes in each metric. `services/evidence.py` derives candidate-scoped diagnostic summaries and separately labelled host/provider/ESP32 sections without changing historical metric values. The provider route requires explicit evaluation provenance before upload; sanitized receipts remain separate `edge_records` JSON on schema 4. The interface defaults to measured diagnostics and retains inventory under separate filters. No remote provider profile is substituted for physical benchmarking.

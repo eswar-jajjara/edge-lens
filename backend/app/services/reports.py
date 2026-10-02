@@ -3,8 +3,9 @@ import csv
 from html import escape
 import io
 import json
+from app.services.evidence import diagnostic_groups, evidence_sections
 
-METRICS = ["label", "accuracy_pct", "correct_count", "sample_count", "accuracy_delta_pp", "accuracy_delta_vs_fp32_pp", "reference_profile", "agreement_pct", "latency_mean_ms", "latency_p50_ms", "latency_p95_ms", "conversion_seconds", "size_bytes", "output_mae", "output_max_abs", "tolerance_failure_count"]
+METRICS = ["label", "accuracy_pct", "correct_count", "sample_count", "accuracy_delta_pp", "accuracy_delta_vs_fp32_pp", "reference_profile", "agreement_pct", "latency_mean_ms", "latency_p50_ms", "latency_p95_ms", "conversion_seconds", "size_bytes", "output_mae", "output_max_abs", "tolerance_failure_count", "artifact_sha256", "dataset_sha256", "evaluation_split"]
 LAYERS = ["profile", "name", "operation", "status", "mae", "max_abs", "nrmse", "sample_count", "scope", "sample_index", "expected_shape", "actual_shape", "max_error_index", "expected_value", "actual_value", "detail"]
 SENSITIVITY = ["node", "operation", "candidate_id", "parent_candidate", "status", "accuracy_recovery_pp", "output_mae_change", "excluded_nodes", "evidence_split", "interpretation"]
 PREDICTIONS = ["profile", "sample_index", "image", "label", "prediction", "reference_prediction", "max_abs", "within_tolerance"]
@@ -28,7 +29,9 @@ def report_csv(report):
     writer = csv.writer(stream)
     def row(values):
         writer.writerow([_cell(x) for x in values])
-    row(["EdgeLens measured host CPU report", report.get("run_id")])
+    row(["EdgeLens experiment report", report.get("run_id")])
+    row(["Evidence sections", evidence_sections(report)])
+    row(["Diagnostic coverage by candidate", [{k: v for k, v in g.items() if k not in {"measured", "inventory", "unavailable"}} for g in diagnostic_groups(report)]])
     for key in ("model", "dataset", "datasets", "summary", "environment", "settings", "accuracy_resolution_pp", "search", "diagnostics", "test_data_used_for_selection"):
         row([key, report.get(key)])
     selection = report.get("selection") or {}
@@ -67,11 +70,22 @@ def report_html(report):
             return "<p class='muted'>No evidence recorded.</p>"
         return "<div class='scroll'><table><thead><tr>" + "".join(f"<th>{text(k)}</th>" for k in keys) + "</tr></thead><tbody>" + "".join("<tr>" + "".join(f"<td>{text(row.get(k))}</td>" for k in keys) + "</tr>" for row in rows) + "</tbody></table></div>"
     hardware = [x for x in report.get("edge_results", []) if x["kind"] == "hardware"]
-    provider = [x for x in report.get("edge_results", []) if x["kind"] == "edge_impulse_result"]
+    evidence = evidence_sections(report)
+    provider = evidence["edge_impulse"]["records"]
     selection = report.get("selection") or {}
     layers = report.get("layers", [])
     compared = sum(x.get("mae") is not None for x in layers)
     drifts = [x for x in layers if x.get("status") in ("drift", "nonfinite")]
+    layer_sections = ""
+    for group in diagnostic_groups(report):
+        layer_sections += f"<h3>Candidate: {text(group['profile'])}</h3><p>{group['measured_count']} numerical comparisons · {group['inventory_count']} inventory entries · {group['unavailable_count']} unavailable diagnostics."
+        if group["diagnostic_eligible"]:
+            layer_sections += f" Calibration operation coverage: {group['diagnostic_compared']} / {group['diagnostic_eligible']} eligible operations, on {group['diagnostic_sample_count']} calibration images."
+        layer_sections += "</p><h4>Measured comparisons</h4>" + table(group["measured"], LAYERS)
+        if group["unavailable"]:
+            layer_sections += "<h4>Unavailable or failed diagnostic captures</h4>" + table(group["unavailable"], LAYERS)
+        if group["inventory"]:
+            layer_sections += f"<details><summary>Operation inventory — {group['inventory_count']} entries, including {group['quantization_helper_count']} Q/DQ helpers</summary><p>Inventory establishes presence only. Not compared means no numerical comparison was recorded; it does not mean a failed conversion.</p>" + table([{"operation": op, "count": count} for op, count in group["inventory_operations"].items()], ["operation", "count"]) + "<details><summary>Full inventory entries</summary>" + table(group["inventory"], LAYERS) + "</details></details>"
     resolution = report.get("accuracy_resolution_pp") or (100 / report["dataset"]["image_count"] if report.get("dataset", {}).get("image_count") else None)
     detail = "".join(f"<h2>{text(section.title())}</h2><ul>" + "".join(f"<li>{text(x)}</li>" for x in report.get(section, [])) + "</ul>" for section in ("methodology", "limitations"))
     candidates = report.get("candidates", [])
@@ -91,14 +105,14 @@ def report_html(report):
 <style>body{{font:14px/1.65 system-ui,sans-serif;color:#19352e;margin:3rem auto;max-width:1300px;padding:0 1.5rem}}h1{{font-size:2.5rem;letter-spacing:-1px}}h2{{margin-top:2.4rem}}.notice{{padding:1rem;background:#edf8f1;border-left:4px solid #28634b}}.muted{{color:#687c76}}.scroll{{overflow:auto}}table{{border-collapse:collapse;width:100%;font-size:12px}}td,th{{padding:10px;text-align:left;border-bottom:1px solid #dce6e0;vertical-align:top}}th{{background:#edf3ef}}td{{overflow-wrap:anywhere}}pre{{white-space:pre-wrap;overflow-wrap:anywhere;background:#f6f8f7;padding:1rem;font-size:12px}}li{{margin-bottom:.5rem}}details{{margin:1rem 0}}summary{{cursor:pointer;font-weight:600}}@media print{{body{{margin:0}}thead{{display:table-header-group}}tr{{break-inside:avoid}}}}</style>
 <p class="muted">EDGELENS / DEVELOPER EXPERIMENT RECORD</p><h1>{text(report.get('model', {}).get('name'))}</h1>
 <p>{text(report.get('run_id'))} · {text(report.get('created_at'))}</p><div class="notice"><strong>{text(report.get('summary', {}).get('conclusion'))}</strong><p>Host CPU measurements · {len(hardware)} physical-device reports · {len(provider)} Edge Impulse analyses. These are separate evidence sources.</p></div>
-<h2>1. Conversion and host performance</h2><p>Accuracy uses true labels. Agreement and numerical error use the declared PyTorch or FP32 ONNX reference when supplied. Original PyTorch conversion loss is unavailable for ONNX-only uploads. Accuracy deltas are percentage points; one changed prediction = {text(resolution)} pp on this dataset. Missing comparisons remain empty.</p>
+<h2>1. Laptop / host — {evidence['host']['status']}</h2><p>Accuracy uses true labels. Agreement and numerical error use the declared PyTorch or FP32 ONNX reference when supplied. Original PyTorch conversion loss is unavailable for ONNX-only uploads. Accuracy deltas are percentage points; one changed prediction = {text(resolution)} pp on this dataset. Missing comparisons remain empty.</p>
 {table(report.get('metrics', []), METRICS)}<p>Serialized file size is not runtime RAM. Small timing differences require independent repetitions.</p>
 {selection_section}
-<h2>3. Layer diagnostics</h2><p>{compared} of {len(layers)} entries compared numerically; {len(drifts)} require review. Unmapped operations are unverified. An observed difference at a boundary is evidence, not proof of its root cause.</p>
-{table(layers, LAYERS)}
+<h2>3. Layer diagnostics</h2><p>{compared} numerical comparisons recorded across candidates; {len(drifts)} require review. Inventory and unavailable captures are shown separately below. Counts across candidates are repeated graph entries, not unique model layers. An observed difference at a boundary is evidence, not proof of its root cause.</p>
+{layer_sections}
 <h2>4. Per-image predictions</h2>{table(report.get('predictions', []), PREDICTIONS)}
-<h2>5. Physical ESP32 results</h2>{table(hardware, HARDWARE)}<p>Device-reported Invoke-only samples and output on one fixed image. USB capture and imported JSON retain separate provenance. Neither carries cryptographic hardware attestation. Arena usage is not total RAM; one-image agreement is not dataset accuracy.</p>{pretty(hardware)}
-<h2>6. Edge Impulse reference analysis</h2><p>Provider resource/timing analysis is not exact latency from your USB-connected ESP32.</p>{pretty(provider)}
+<h2>5. ESP32 — {evidence['esp32']['status']}</h2>{table(hardware, HARDWARE)}<p>{text(evidence["esp32"]["reason"]) if not hardware else ""}</p><p>Device-reported Invoke-only samples and output on one fixed image. USB capture and imported JSON retain separate provenance. Neither carries cryptographic hardware attestation. Arena usage is not total RAM; one-image agreement is not dataset accuracy.</p>{pretty(hardware)}
+<h2>6. Edge Impulse — {evidence['edge_impulse']['status']}</h2><p>{text(evidence["edge_impulse"]["verification"])}</p><p>ESTIMATED provider resources and timing are separate from physical measurements. Accuracy is linked only when the uploaded SHA-256 matches an explicitly evaluated held-out artifact. Older unverified records retain UNAVAILABLE accuracy links.</p>{pretty(provider)}
 <h2>7. Reproduce this experiment</h2><p>Use the identical model and dataset hashes, preprocessing, tolerances, runtime versions and settings. Exported PT2 must come from a trusted source. Download the corresponding artifacts from the saved run.</p>
 {pretty({'model': report.get('model'), 'dataset': report.get('dataset'), 'datasets': report.get('datasets'), 'settings': report.get('settings'), 'environment': report.get('environment'), 'artifacts': report.get('artifacts')})}
 <h3>Metric provenance</h3>{pretty({x.get('profile'): x.get('provenance') for x in report.get('metrics', [])})}

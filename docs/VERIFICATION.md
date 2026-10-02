@@ -1,5 +1,34 @@
 # Verification — EdgeLens
 
+## Phase 3 local checkpoint — 2 October 2026, source version 0.7.0
+
+- Full backend suite: 65 tests, 64 passed, one optional download test skipped.
+  New contracts cover exact held-out model/dataset identity, missing/legacy
+  provenance, pre-upload checksum rejection, explicit consent, target discovery,
+  sanitized raw receipts and independent host/provider/device evidence.
+- All 13 frontend transport tests, JavaScript/native-entry syntax and the
+  interface build passed. Browser verification of the desktop interface used an
+  isolated local workspace; it did not change the user's desktop history.
+- A real 6,912-byte, hand-authored 32x32 INT8 TFLite fixture was evaluated on 300
+  synthetic labelled images using the actual LiteRT interpreter and CLI. Its
+  labelled accuracy was 100% in this plumbing test. SHA-256:
+  `6c6f1735e0fd930a79b05556c3d7afa7a594dd760761390ea29a5d89c9dbc407`.
+  This is not a PyTorch conversion result, trained model quality claim or hardware
+  fit/performance evidence. The saved metric hash matches the evaluated bytes.
+- A read-only rendering of the previous MobileNetV2 report shows the diagnosed
+  candidate's 53/53 eligible operations on three calibration images. The UI
+  candidate filter shows exactly those 53 comparisons; inventory shows 100 of
+  351 entries initially with a load-more control. HTML groups measured evidence,
+  failed/unavailable diagnostics and inventory separately. The original measured
+  metrics and source artifacts were not rerun or changed.
+- SQLite remains schema 4; saved metric/evaluation fields and provider receipts
+  are additive JSON. Old history remains readable, with unavailable provider
+  accuracy links unless explicit evaluated-artifact provenance exists.
+- Live Edge Impulse API profiling remains pending. Project creation and visible
+  ESP-EYE target availability do not count as a completed profile. A QDQ ONNX
+  provider probe, validated Linux TFLite INT8 conversion and physical ESP32
+  benchmarking remain pending; see [Phase 3 scope](EDGE-PROFILING.md).
+
 ## Phase 2 — 2 October 2026, source version 0.6.0
 
 - The full 55-test backend suite passed (54 passed, one optional pretrained
