@@ -19,6 +19,7 @@ def create_app(settings: Settings | None = None, *, runner=None, capability_prov
         config.data_dir.mkdir(parents=True, exist_ok=True)
         repository = Repository(config.data_dir)
         repository.recover_interrupted()
+        repository.recover_provider_submissions()
         application.state.repository = repository
         application.state.validation = ValidationService(repository, config.data_dir, runner or run_benchmark)
         application.state.impulse_connections = ImpulseConnections()
@@ -29,7 +30,7 @@ def create_app(settings: Settings | None = None, *, runner=None, capability_prov
             application.state.validation.close()
 
     application = FastAPI(
-        title="EdgeLens API", version="0.8.0", lifespan=lifespan,
+        title="EdgeLens API", version="0.9.1", lifespan=lifespan,
         description="Image classification conversion benchmarks and persistent layer reports.",
         docs_url="/api/docs" if config.environment == "development" else None,
         redoc_url=None,

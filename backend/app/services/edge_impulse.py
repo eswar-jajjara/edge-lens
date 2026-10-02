@@ -11,7 +11,7 @@ BASE = "https://studio.edgeimpulse.com/v1/api"
 
 def redact_response(value, key):
     """Preserve provider response structure with credentials/request bytes removed."""
-    forbidden = {"apikey", "xapikey", "authorization", "password", "token", "secret", "tflitefilebase64", "modelbytes"}
+    forbidden = {"apikey", "xapikey", "authorization", "password", "token", "secret", "tflitefilebase64", "onnxfilebase64", "modelfile", "modelbytes", "representativefeatures"}
     if isinstance(value, dict):
         return {k: redact_response(v, key) for k, v in value.items()
                 if str(k).lower().replace("-", "").replace("_", "") not in forbidden}
@@ -22,10 +22,10 @@ def redact_response(value, key):
     return value.replace(key, "[REDACTED]") if isinstance(value, str) and key else value
 
 
-def call_api(method, path, key, body=None):
+def call_api(method, path, key, body=None, *, files=None, data=None):
     try:
         with httpx.Client(timeout=45, follow_redirects=False) as client:
-            response = client.request(method, BASE + path, headers={"x-api-key": key}, json=body)
+            response = client.request(method, BASE + path, headers={"x-api-key": key}, json=body, files=files, data=data)
         if response.status_code != 200:
             raise ValueError(f"Edge Impulse returned HTTP {response.status_code}. Check the project, key and profiling access.")
         if len(response.content) > 2 * 1024 * 1024:
@@ -42,7 +42,9 @@ def call_api(method, path, key, body=None):
         raise ValueError("Could not reach Edge Impulse securely. Check network access and try again.") from exc
 
 
-def start_profile(path: Path, project_id: int, device: str, key: str, *, expected_sha256=None):
+def start_profile(path: Path, project_id: int, device: str, key: str, *, expected_sha256=None, model_format="tflite", input_shape=None):
+    if model_format not in {"tflite", "onnx"}:
+        raise ValueError("Select an evaluated ONNX or TFLite artifact")
     if path.stat().st_size > 20 * 1024 * 1024:
         raise ValueError("Edge Impulse upload limit in this prototype is 20 MiB")
     content = path.read_bytes()
@@ -50,10 +52,46 @@ def start_profile(path: Path, project_id: int, device: str, key: str, *, expecte
         raise ValueError("Edge Impulse upload limit in this prototype is 20 MiB")
     if expected_sha256 is not None and hashlib.sha256(content).hexdigest() != expected_sha256:
         raise ValueError("Upload bytes no longer match the evaluated artifact hash")
-    result = call_api("POST", f"/{project_id}/jobs/profile-tflite", key,
-                      {"tfliteFileBase64": base64.b64encode(content).decode("ascii"), "device": device})
+    if model_format == "onnx":
+        if not isinstance(input_shape, list) or len(input_shape) != 4 or any(type(x) is not int or x < 1 for x in input_shape) or input_shape[0] != 1:
+            raise ValueError("ONNX profiling requires the evaluated fixed batch-one image shape")
+        name = onnx_filename(hashlib.sha256(content).hexdigest())
+        result = call_api("POST", f"/{project_id}/pretrained-model/upload", key,
+                          files={"modelFile": (name, content, "application/octet-stream")},
+                          data={"modelFileName": name, "modelFileType": "onnx", "device": device,
+                                "overrideInputShape": ",".join(map(str, input_shape))})
+    else:
+        result = call_api("POST", f"/{project_id}/jobs/profile-tflite", key,
+                          {"tfliteFileBase64": base64.b64encode(content).decode("ascii"), "device": device})
     if type(result.get("id")) is not int:
         raise ValueError("Edge Impulse returned no job ID")
+    return result["id"]
+
+
+def onnx_filename(digest):
+    return f"edgelens_{digest}.onnx"
+
+
+def job_finished(project_id, job_id, key):
+    result = call_api("GET", f"/{project_id}/jobs/{job_id}/status", key)
+    job = result.get("job", {})
+    if job.get("id") != job_id:
+        raise ValueError("Edge Impulse returned a different job ID")
+    if not job.get("finished"):
+        return False
+    if job.get("finishedSuccessful") is not True:
+        raise ValueError("Edge Impulse could not process this ONNX model. Check the job in Studio for unsupported operations or QDQ conversion errors.")
+    return True
+
+
+def pretrained_model(project_id, key):
+    return call_api("GET", f"/{project_id}/pretrained-model", key)
+
+
+def start_pretrained_profile(project_id, key):
+    result = call_api("POST", f"/{project_id}/pretrained-model/profile", key)
+    if type(result.get("id")) is not int:
+        raise ValueError("Edge Impulse returned no profiling job ID")
     return result["id"]
 
 

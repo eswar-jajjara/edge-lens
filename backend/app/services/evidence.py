@@ -1,6 +1,7 @@
 """Evidence views derived from saved results; never infer missing measurements."""
 from collections import Counter
 import math
+import re
 
 
 def finite(value):
@@ -10,6 +11,10 @@ def finite(value):
 def artifact_evaluation(report, artifact):
     """Only explicit held-out metric hashes establish an accuracy/resource link."""
     dataset = report.get("datasets", {}).get("test") or report.get("dataset", {})
+    if (not re.fullmatch(r"[a-f0-9]{64}", str(artifact.get("sha256", "")))
+            or not re.fullmatch(r"[a-f0-9]{64}", str(dataset.get("sha256", "")))
+            or type(dataset.get("image_count")) is not int or dataset["image_count"] < 1):
+        return {"status": "UNAVAILABLE", "reason": "An evaluated artifact, dataset hash and positive held-out image count are required."}
     matches = [m for m in report.get("metrics", [])
                if m.get("artifact_sha256") == artifact.get("sha256")
                and m.get("evaluation_split") == "test"
@@ -62,8 +67,13 @@ def evidence_sections(report):
         captured = record.get("evaluated_artifact") or {}
         linked = evaluation["status"] == "MEASURED" and all(captured.get(k) == evaluation.get(k) for k in
                     ("artifact_sha256", "dataset_sha256", "preprocessed_sha256", "preprocessing", "labels", "sample_count", "accuracy_pct"))
-        provider.append({**record, "evidence_status": "ESTIMATED", "accuracy_link": "VERIFIED" if linked else "UNAVAILABLE",
-                         "evaluation": evaluation if linked else {"status": "UNAVAILABLE", "reason": "The provider record lacks matching evaluated-artifact provenance."}})
+        is_onnx = record.get("model_format") == "onnx" or record.get("provider_protocol") == "onnx_byom" or (artifact or {}).get("format") == "onnx"
+        provider.append({**record, "evidence_status": "ESTIMATED", "upload_evaluation_link": "VERIFIED" if linked else "UNAVAILABLE",
+                         "accuracy_link": "VERIFIED" if linked and not is_onnx else "UNAVAILABLE",
+                         "evaluation": evaluation if linked and not is_onnx else {"status": "UNAVAILABLE", "reason":
+                            "Edge Impulse converts the uploaded ONNX model. Accuracy of that converted artifact has not been evaluated; the uploaded ONNX accuracy remains a separate host measurement."
+                            if is_onnx else "The provider record lacks matching evaluated-artifact provenance."},
+                         "uploaded_artifact_evaluation": evaluation if linked else {"status": "UNAVAILABLE"}})
     hardware = [r for r in report.get("edge_results", []) if r.get("kind") == "hardware"]
     return {"host": {"status": "MEASURED" if report.get("source") == "measured" and report.get("metrics") else "UNAVAILABLE", "scope": "host_cpu"},
             "edge_impulse": {"status": "ESTIMATED" if provider else "UNAVAILABLE", "records": provider,

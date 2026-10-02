@@ -1,6 +1,8 @@
-# EdgeLens — Deployment Validation Tool 0.9.0
+# EdgeLens — Deployment Validation Tool 0.9.1
 
 A Windows desktop developer tool for validating image-classifier conversion and investigating edge readiness with separately labelled provider estimates. Electron starts a private local Python engine automatically; SQLite stores models, datasets, metrics, layer findings and reports. Model binaries stay on disk with SHA256 metadata in SQLite.
+
+**New in 0.9.1:** profile evaluated ONNX files through Edge Impulse’s BYOM workflow. Upload and profiling jobs are saved separately; provider-converted accuracy remains unavailable. See [the ONNX walkthrough](docs/EDGE-IMPULSE-ONNX.md).
 
 ## Open it
 
@@ -30,7 +32,7 @@ The older [Windows x64 portable ZIP v0.4.1](https://github.com/eswar-jajjara/edg
 - Measure labelled top-1 accuracy, prediction agreement, output MAE/max error, conversion/search time, mean/median/p95 host latency and serialized size.
 - Inspect conservative per-operation mappings, an unoptimized diagnostic graph, per-image predictions, runtime versions, hashes and exact settings. Unmapped operations remain unverified.
 - Generate an ESP-IDF package for a compatible small TFLite model; capture matching ESP32 USB reports or import their JSON. Physical device results are separate from host metrics. EdgeLens does not flash boards automatically.
-- Connect one or more Edge Impulse projects with session-only keys, load their targets and choose a destination per test. No requires no upload; Yes explicitly authorizes the evaluated TFLite upload after a successful test. Provider estimates stay separate from host and physical-board measurements. No hardware is needed for this optional step.
+- Connect one or more Edge Impulse projects with session-only keys, load their targets and choose a destination per test. No requires no upload; Yes explicitly authorizes an evaluated ONNX or TFLite upload after a successful test. ONNX uses provider conversion and replaces the project’s BYOM model; converted-model accuracy remains UNAVAILABLE. See [ONNX profiling](docs/EDGE-IMPULSE-ONNX.md). Provider estimates stay separate from host and physical-board measurements. No hardware is needed for this optional step.
 - Delete a completed or failed test's local report history and generated artifacts after confirmation. Original uploaded models and datasets stay; active benchmarks cannot be deleted.
 - Export complete HTML/CSV/JSON reports. Use `backend/cli.py` for a headless software-tool workflow.
 
@@ -79,6 +81,6 @@ Open **Layer diagnostics → Run seven checks** for a saved self-test, or start 
 new supported ONNX benchmark to see mapping reasons and graph connections.
 In **Reports & history**, import the inner `edgelens-worker-report.zip` produced
 by the Linux worker; Linux timings remain labelled as worker measurements.
-Use **Edge Impulse** to request estimates for the exact evaluated TFLite artifact.
+Use **Edge Impulse** to request estimates for an evaluated ONNX or TFLite artifact. ONNX provider conversion is tracked separately; its converted-model accuracy is UNAVAILABLE.
 Local WSL has not been verified in this session. Physical-device measurements
 and arbitrary cross-format intermediate mapping remain unavailable.

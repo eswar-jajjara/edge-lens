@@ -1,4 +1,4 @@
-# Set up EdgeLens 0.9.0 on a Windows teammate’s laptop
+# Set up EdgeLens 0.9.1 on a Windows teammate’s laptop
 
 EdgeLens is a desktop developer tool. It runs a private Python conversion and
 benchmark engine on your laptop, shows layer diagnostics, and stores experiments
@@ -144,3 +144,7 @@ imports worker reports through **Reports & history**. Follow
 [Stages 1–5](STAGES-1-5.md). Your teammate can reproduce the synthetic Linux test
 with the GitHub workflow without uploading private models. Local WSL setup still
 requires verification on their laptop. Physical ESP32 results remain unavailable.
+
+## ONNX Edge Impulse profiling (0.9.1)
+
+Use a current source setup, or the rebuilt portable folder on this laptop. Open **Edge Impulse**, connect a dedicated project with its Read + Write key, load targets, choose a completed test and an evaluated ONNX artifact. ONNX replaces the project’s BYOM model; leave it unchanged while profiling. See [the complete walkthrough](EDGE-IMPULSE-ONNX.md). Credentials remain session-only. The older v0.4.1 release ZIP does not include this feature.

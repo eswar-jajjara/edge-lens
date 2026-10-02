@@ -5,7 +5,7 @@ from typing import Literal
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import Response
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, model_validator
-from app.services import hardware, edge_impulse
+from app.services import hardware, edge_impulse, onnx_profiling
 from app.services.benchmark import _hash_file
 from app.services.evidence import artifact_evaluation
 
@@ -113,10 +113,10 @@ def record(request, record_id, kind):
     return result
 
 
-def artifact_path(request, run, index):
+def artifact_path(request, run, index, *, formats=("tflite",)):
     artifacts = run["report"].get("artifacts", [])
-    if not 0 <= index < len(artifacts) or artifacts[index]["format"] != "tflite":
-        raise HTTPException(422, "Select a TFLite artifact")
+    if not 0 <= index < len(artifacts) or artifacts[index]["format"] not in formats:
+        raise HTTPException(422, "Select an evaluated " + " or ".join(formats) + " artifact")
     artifact = artifacts[index]
     path = Path(artifact["path"]).resolve()
     root = (request.app.state.config.data_dir / "runs" / run["id"]).resolve()
@@ -201,19 +201,36 @@ def import_observation(package_id: str, payload: hardware.DeviceObservation, req
 def submit_profile(run_id: str, payload: ProfileRequest, request: Request):
     require_local(request)
     run = completed_run(request, run_id)
-    artifact, path = artifact_path(request, run, payload.artifact_index)
+    artifact, path = artifact_path(request, run, payload.artifact_index, formats=("tflite", "onnx"))
     evaluation = artifact_evaluation(run["report"], artifact)
     if evaluation["status"] != "MEASURED":
         raise HTTPException(409, evaluation["reason"])
     key, project_name = credential(request, payload, payload.project_id)
+    metadata = {"project_id": payload.project_id, "project_name": project_name, "connection_access": "project_key", "device": payload.device,
+                "artifact_index": payload.artifact_index, "profile": artifact["profile"], "model_sha256": artifact["sha256"],
+                "model_format": artifact["format"], "evaluated_artifact": evaluation, "source": "edge_impulse",
+                "measurement_scope": "provider_analysis", "evidence_status": "ESTIMATED"}
+    if artifact["format"] == "onnx":
+        metadata.update(provider_protocol="onnx_byom", phase="upload_submitting", job_id=None,
+                        provider_conversion="ONNX is converted by Edge Impulse. Its converted artifact has not been evaluated by EdgeLens.",
+                        provider_url=edge_impulse.BASE + f"/{payload.project_id}/pretrained-model/upload")
+        try:
+            job = request.app.state.repository.reserve_onnx_job(run_id, metadata)
+        except ValueError as exc:
+            raise HTTPException(409, str(exc)) from exc
+        try:
+            job_id = edge_impulse.start_profile(path, payload.project_id, payload.device, key,
+                expected_sha256=artifact["sha256"], model_format="onnx", input_shape=evaluation["preprocessing"]["input_shape"])
+        except ValueError as exc:
+            request.app.state.repository.update_edge_record(job["id"], {"phase": "upload_unknown"})
+            raise HTTPException(502, str(exc) + " Check Studio before uploading again; no automatic retry was made.") from exc
+        return request.app.state.repository.update_edge_record(job["id"], {"job_id": job_id, "phase": "upload_pending"})
     try:
         job_id = edge_impulse.start_profile(path, payload.project_id, payload.device, key, expected_sha256=artifact["sha256"])
     except ValueError as exc:
         raise HTTPException(502, str(exc)) from exc
-    return request.app.state.repository.save_edge_record(run_id, "edge_impulse_job", {"project_id": payload.project_id, "project_name": project_name, "connection_access": "project_key", "job_id": job_id, "device": payload.device,
-                  "artifact_index": payload.artifact_index, "profile": artifact["profile"], "model_sha256": artifact["sha256"],
-                  "evaluated_artifact": evaluation, "source": "edge_impulse", "measurement_scope": "provider_analysis",
-                  "evidence_status": "ESTIMATED", "provider_url": edge_impulse.BASE + f"/{payload.project_id}/jobs/profile-tflite"})
+    return request.app.state.repository.save_edge_record(run_id, "edge_impulse_job", dict(metadata, job_id=job_id, device=payload.device,
+                  provider_url=edge_impulse.BASE + f"/{payload.project_id}/jobs/profile-tflite"))
 
 
 @router.post("/edge/impulse/{record_id}/refresh")
@@ -221,19 +238,31 @@ def refresh_profile(record_id: str, payload: ProfileRefresh, request: Request):
     require_local(request)
     job = record(request, record_id, "edge_impulse_job")
     run = completed_run(request, job["run_id"])
-    artifact, _ = artifact_path(request, run, job["artifact_index"])
+    artifact, _ = artifact_path(request, run, job["artifact_index"], formats=("tflite", "onnx"))
     if artifact["sha256"] != job["model_sha256"]:
         raise HTTPException(409, "Profile job artifact hash does not match this run")
     key, _ = credential(request, payload, job["project_id"])
+    if job.get("provider_protocol") == "onnx_byom":
+        existing = next((r for r in request.app.state.repository.edge_records(job["run_id"])
+                         if r.get("kind") == "edge_impulse_result" and r.get("provider_job_record_id") == job["id"]), None)
+        if existing:
+            return existing
     try:
-        result = edge_impulse.profile_result(job["project_id"], job["job_id"], key)
+        if job.get("provider_protocol") == "onnx_byom":
+            result, job = onnx_profiling.advance(request.app.state.repository, job, key)
+        else:
+            result = edge_impulse.profile_result(job["project_id"], job["job_id"], key)
     except ValueError as exc:
         raise HTTPException(502, str(exc)) from exc
     result = edge_impulse.redact_response(result, key)
     result_record = {k: job[k] for k in ("project_id", "job_id", "device", "artifact_index", "profile", "model_sha256")}
     result_record.update(evaluated_artifact=job.get("evaluated_artifact"), evidence_status="ESTIMATED",
+                         provider_job_record_id=job["id"],
+                         model_format=job.get("model_format", "tflite"), provider_protocol=job.get("provider_protocol", "tflite_job"),
+                         profile_job_id=job.get("profile_job_id"), provider_conversion=job.get("provider_conversion"),
+                         provider_identity_sha256=job.get("provider_identity_sha256"),
                          project_name=job.get("project_name"), connection_access=job.get("connection_access", "project_key"),
-                         provider_url=edge_impulse.BASE + f"/{job['project_id']}/jobs/profile-tflite/{job['job_id']}/result",
+                         provider_url=edge_impulse.BASE + (f"/{job['project_id']}/pretrained-model" if job.get("provider_protocol") == "onnx_byom" else f"/{job['project_id']}/jobs/profile-tflite/{job['job_id']}/result"),
                          raw_response=result,
                          response_sha256=hashlib.sha256(json.dumps(result, sort_keys=True, allow_nan=False).encode()).hexdigest(),
                          response_redaction="Credentials and request model bytes removed; otherwise provider response structure preserved.")

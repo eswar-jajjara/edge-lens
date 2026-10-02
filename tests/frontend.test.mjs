@@ -36,18 +36,27 @@ test('disconnect supports an empty 204 response and history deletion encodes the
   assert.equal(calls[1].options.method,'DELETE'); assert.ok(calls[1].url.endsWith('run%2Fone'));
 });
 
-test('estimate planning skips No and refuses to infer TFLite resources from ONNX', async () => {
+test('estimate planning supports evaluated ONNX and TFLite without inventing evaluation links', async () => {
   const context = {window:{}};
   vm.runInNewContext(await readFile(new URL('../frontend/src/estimate-plan.js',import.meta.url),'utf8'),context);
   const plan = context.window.EdgeLensEstimate.afterBenchmark;
-  const artifact = {format:'tflite',sha256:'a'.repeat(64)};
-  assert.equal(plan({source:'measured',artifacts:[artifact]},{enabled:false}).action,'skip');
-  assert.equal(plan({source:'demo',artifacts:[artifact]},{enabled:true}).action,'unavailable');
-  assert.equal(plan({source:'measured',artifacts:[{format:'onnx',sha256:'a'.repeat(64)}]},{enabled:true}).action,'unavailable');
-  assert.equal(plan({source:'measured',artifacts:[{format:'tflite'}]},{enabled:true}).action,'unavailable');
-  assert.equal(plan({source:'measured',artifacts:[artifact,artifact]},{enabled:true}).action,'select');
-  const result = plan({source:'measured',artifacts:[{format:'onnx'},artifact]},{enabled:true});
+  const artifact = {format:'tflite',sha256:'a'.repeat(64)}, onnx = {format:'onnx',sha256:'b'.repeat(64)};
+  const report = artifacts => ({source:'measured',dataset:{sha256:'d'.repeat(64),image_count:300},artifacts,
+    metrics:artifacts.filter(x => x.sha256).map(x => ({artifact_sha256:x.sha256,dataset_sha256:'d'.repeat(64),sample_count:300,evaluation_split:'test',accuracy_pct:50}))});
+  assert.equal(plan(report([artifact]),{enabled:false}).action,'skip');
+  assert.equal(plan({...report([artifact]),source:'demo'},{enabled:true}).action,'unavailable');
+  assert.equal(plan(report([onnx]),{enabled:true}).action,'upload');
+  assert.equal(plan(report([{format:'tflite'}]),{enabled:true}).action,'unavailable');
+  assert.equal(plan(report([artifact,onnx]),{enabled:true}).action,'select');
+  assert.equal(plan(report([onnx,onnx]),{enabled:true}).action,'upload');
+  const result = plan(report([{format:'onnx'},artifact]),{enabled:true});
   assert.equal(result.action,'upload'); assert.equal(result.artifact_index,1);
+  const incomplete = report([onnx]); incomplete.metrics[0].sample_count = 299;
+  assert.equal(plan(incomplete,{enabled:true}).action,'unavailable');
+  const calibration = report([onnx]); calibration.metrics[0].evaluation_split = 'calibration';
+  assert.equal(plan(calibration,{enabled:true}).action,'unavailable');
+  const old = report([onnx]); delete old.metrics[0].artifact_sha256;
+  assert.equal(plan(old,{enabled:true}).action,'unavailable');
 });
 
 test('provider target discovery keeps the transient key in the request body', async () => {

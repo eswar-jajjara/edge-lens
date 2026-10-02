@@ -269,10 +269,49 @@ class Repository:
             row = connection.execute("SELECT payload_json FROM edge_records WHERE id=?", (record_id,)).fetchone()
         return json.loads(row[0]) if row else None
 
+    def update_edge_record(self, record_id, updates):
+        # Serialize job transitions so a refresh never silently overwrites another.
+        with self._connection() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            row = connection.execute("SELECT payload_json FROM edge_records WHERE id=?", (record_id,)).fetchone()
+            if not row:
+                raise ValueError("Provider job no longer exists")
+            value = json.loads(row[0])
+            if any(k in updates for k in ("id", "run_id", "kind", "created_at")):
+                raise ValueError("Cannot change provider record identity")
+            value.update(updates)
+            connection.execute("UPDATE edge_records SET payload_json=? WHERE id=?", (_json(value), record_id))
+        return value
+
+    def reserve_onnx_job(self, run_id, payload):
+        value = dict(payload, id="edge_" + uuid4().hex, run_id=run_id, kind="edge_impulse_job", created_at=_now())
+        with self._connection() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            rows = connection.execute("SELECT payload_json FROM edge_records WHERE kind='edge_impulse_job'").fetchall()
+            for row in rows:
+                job = json.loads(row[0])
+                if (job.get("provider_protocol") == "onnx_byom" and job.get("project_id") == value["project_id"]
+                        and job.get("phase") not in {"complete", "failed", "upload_unknown", "profile_unknown"}):
+                    raise ValueError("This project already has an unfinished ONNX upload/profile. Fetch that job before uploading another model.")
+            connection.execute("INSERT INTO edge_records VALUES (?, ?, ?, ?, ?)", (value["id"], run_id, value["kind"], value["created_at"], _json(value)))
+        return value
+
     def edge_records(self, run_id):
         with self._connection() as connection:
             rows = connection.execute("SELECT payload_json FROM edge_records WHERE run_id=? ORDER BY created_at", (run_id,)).fetchall()
         return [json.loads(row[0]) for row in rows]
+
+    def recover_provider_submissions(self):
+        # A process interruption can lose the response after a remote POST.
+        # Preserve that ambiguity, and never automatically resend the model.
+        with self._connection() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            rows = connection.execute("SELECT id, payload_json FROM edge_records WHERE kind='edge_impulse_job'").fetchall()
+            for row in rows:
+                value = json.loads(row[1])
+                if value.get("provider_protocol") == "onnx_byom" and value.get("phase") in {"upload_submitting", "profile_submitting"}:
+                    value["phase"] = value["phase"].replace("submitting", "unknown")
+                    connection.execute("UPDATE edge_records SET payload_json=? WHERE id=?", (_json(value), row[0]))
 
     def recover_interrupted(self) -> int:
         """Fail interrupted work on startup; a previous process cannot finish it."""

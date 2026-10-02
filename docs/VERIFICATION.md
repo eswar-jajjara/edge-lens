@@ -1,5 +1,21 @@
 # Verification — EdgeLens
 
+## ONNX Edge Impulse integration — source version 0.9.1
+
+- Mock-provider transport/workflow contracts pass: exact ONNX multipart bytes and
+  fixed input shape, separate upload/profile job IDs, resume after restart,
+  ambiguous POST recovery without retry, changed model/profile-job rejection,
+  sanitized provider snapshots, busy-project protection and unchanged TFLite path.
+- Frontend offers only ONNX/TFLite artifacts with complete held-out evaluation.
+  ONNX source accuracy and uploaded-artifact evaluation are separate from the
+  provider-converted model's **UNAVAILABLE** accuracy link.
+- Local backend suite: **95 passed, 1 optional pretrained-download test skipped**;
+  frontend suite: **17 passed**. Nine dedicated ONNX profiling tests pass.
+- Live ONNX provider acceptance, including QDQ INT8, is **UNAVAILABLE / unverified**
+  until a user connects a project and successfully uploads and fetches a response.
+  No real Edge Impulse model was uploaded as part of these mock-provider tests.
+- See [ONNX setup, project replacement and evidence limits](EDGE-IMPULSE-ONNX.md).
+
 ## Review-II objective work — source version 0.9.0
 
 - **MEASURED:** seven synthetic known-fault/control cases pass, including a

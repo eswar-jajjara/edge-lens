@@ -45,6 +45,12 @@ class EvidenceTests(unittest.TestCase):
             candidate = copy.deepcopy(value); candidate['metrics'][0].update(change)
             self.assertEqual(artifact_evaluation(candidate, candidate['artifacts'][0])['status'], 'UNAVAILABLE')
 
+    def test_missing_or_invalid_dataset_identity_cannot_establish_evaluation(self):
+        for dataset in ({'sha256': 'bad', 'image_count': 300}, {'sha256': 'd' * 64}, {'sha256': 'd' * 64, 'image_count': 0}):
+            value = fixture(); value['dataset'] = dataset
+            value['metrics'][0].update(dataset_sha256=dataset.get('sha256'), sample_count=dataset.get('image_count'))
+            self.assertEqual(artifact_evaluation(value, value['artifacts'][0])['status'], 'UNAVAILABLE')
+
     def test_other_candidate_and_old_provider_records_never_inherit_accuracy(self):
         value = fixture(); artifact = value['artifacts'][0]
         for digest in (artifact['sha256'], 'b' * 64):

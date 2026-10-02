@@ -39,7 +39,7 @@
     disconnectImpulse: id => request(`/edge/impulse/connections/${encodeURIComponent(id)}`, {method:'DELETE'}),
     profileTargets: (project_id,credential) => request('/edge/impulse/targets', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({project_id,...(typeof credential === 'string' ? {api_key:credential} : credential)}),signal:AbortSignal.timeout(60000)}),
     startProfile: (id,payload) => request(`${runPath(id)}/edge/impulse`, {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload),signal:AbortSignal.timeout(60000)}),
-    refreshProfile: (id,credential) => request(`/edge/impulse/${encodeURIComponent(id)}/refresh`, {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(typeof credential === 'string' ? {api_key:credential} : credential),signal:AbortSignal.timeout(60000)}),
+    refreshProfile: (id,credential) => request(`/edge/impulse/${encodeURIComponent(id)}/refresh`, {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(typeof credential === 'string' ? {api_key:credential} : credential),signal:AbortSignal.timeout(150000)}),
     createRun: payload => request('/runs', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }),
   });
 })();
