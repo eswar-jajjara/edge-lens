@@ -3,8 +3,8 @@ const $ = selector => document.querySelector(selector);
 const api = window.EdgeLensAPI;
 const desktop = Boolean(window.EDGELENS_CONFIG?.desktop);
 const workerName = desktop ? 'this computer' : 'the server CPU';
-const state = { mode: 'demo', page: 'overview', report: window.EdgeLensDemoReport, run: null, capabilities: null, datasets: [], models: [], edgeRecords: [], history: [], connected: false, creating: false, uploading: false, pollToken: 0, connectionToken: 0 };
-const pages = { edge: ['Edge hardware', 'Review estimated resources and separately recorded device evidence.', 'Edge hardware'], overview: ['Validation overview', 'See what conversion changes. Keep the evidence.', 'Overview'], diagnostics: ['Layer diagnostics', 'Find the differences behind the final predictions.', 'Layer diagnostics'], report: ['Reports & history', 'Keep the complete record of each experiment.', 'Reports & history'] };
+const state = { mode: 'demo', page: 'overview', report: window.EdgeLensDemoReport, run: null, capabilities: null, datasets: [], models: [], edgeRecords: [], history: [], connected: false, creating: false, uploading: false, pollToken: 0, connectionToken: 0, impulseConnections: [], impulseTargets: {}, pendingEstimate: null, estimateBusy: false };
+const pages = { impulse: ['Edge Impulse', 'Connect projects and estimate resources for an evaluated test. No hardware needed.', 'Edge Impulse'], edge: ['Edge hardware', 'Prepare firmware and review separately recorded physical-device evidence.', 'Edge hardware'], overview: ['Validation overview', 'See what conversion changes. Keep the evidence.', 'Overview'], diagnostics: ['Layer diagnostics', 'Find the differences behind the final predictions.', 'Layer diagnostics'], report: ['Reports & history', 'Keep the complete record of each experiment.', 'Reports & history'] };
 const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
 const numeric = value => typeof value === 'number' && Number.isFinite(value);
 const number = (value, places = 2) => numeric(value) ? value.toLocaleString('en-US', { maximumFractionDigits: places, minimumFractionDigits: places }) : '—';
@@ -90,7 +90,9 @@ function renderReport() {
   renderLayers(); renderDeveloperReport();
 }
 function renderHistory() {
-  $('#run-history').innerHTML = state.history.length ? state.history.map(run => `<button class="history-row ${state.run?.id === run.id ? 'selected' : ''}" data-run-id="${escapeHtml(run.id)}"><span><strong>${escapeHtml((state.models || []).find(model => model.id === run.request?.model_id)?.name || human(run.request?.model_id || run.model_id || 'Image classifier'))}</strong><small>${escapeHtml(run.id)} · ${escapeHtml(run.created_at ? new Date(run.created_at).toLocaleString() : 'Date not recorded')}</small></span><span class="status ${run.status === 'completed' ? 'pass' : run.status === 'failed' ? 'warning' : 'neutral'}">${escapeHtml(human(run.status))}</span></button>`).join('') : '<div class="empty-inline">No saved experiments yet. Start a benchmark to create your first record.</div>';
+  $('#run-history').innerHTML = state.history.length ? state.history.map(run => `<div class="history-entry"><button class="history-row ${state.run?.id === run.id ? 'selected' : ''}" data-run-id="${escapeHtml(run.id)}"><span><strong>${escapeHtml((state.models || []).find(model => model.id === run.request?.model_id)?.name || human(run.request?.model_id || run.model_id || 'Image classifier'))}</strong><small>${escapeHtml(run.id)} · ${escapeHtml(run.created_at ? new Date(run.created_at).toLocaleString() : 'Date not recorded')}</small></span><span class="status ${run.status === 'completed' ? 'pass' : run.status === 'failed' ? 'warning' : 'neutral'}">${escapeHtml(human(run.status))}</span></button><button class="text-button delete-history" data-delete-run="${escapeHtml(run.id)}" ${isActive(run) ? 'disabled' : ''} aria-label="Delete saved test ${escapeHtml(run.id)}">Delete</button></div>`).join('') : '<div class="empty-inline">No saved experiments yet. Start a benchmark to create your first record.</div>';
+  $('#ei-run').innerHTML = '<option value="">Select a completed test</option>' + state.history.filter(run => run.status === 'completed').map(run => `<option value="${escapeHtml(run.id)}">${escapeHtml(state.models.find(model => model.id === run.request?.model_id)?.name || human(run.request?.model_id))} · ${escapeHtml(run.id.slice(0, 16))} · ${escapeHtml(new Date(run.created_at).toLocaleString())}</option>`).join('');
+  if (state.run?.status === 'completed') $('#ei-run').value = state.run.id;
 }
 function renderDatasets(selected) {
   const previous = selected || $('#dataset-select').value;
@@ -112,12 +114,14 @@ function updateReadiness() {
   const quantizing = ['quantization_compare', 'deployment_search'].includes($('#run-strategy').value);
   const splitIds = [$('#calibration-select').value, $('#validation-select').value, $('#dataset-select').value];
   const calibrationReady = quantizing ? splitIds.every(Boolean) && new Set(splitIds).size === 3 : $('#run-strategy').value !== 'fidelity_search' || ($('#calibration-select').value && $('#calibration-select').value !== $('#dataset-select').value);
-  const ready = state.connected && calibrationReady && runtime?.available && $('#dataset-select').value && !state.creating && !state.uploading && !isActive(state.run);
+  const estimateReady = !estimateEnabled() || (selectedImpulseProject('#test-ei-project') && $('#test-ei-device').value);
+  const ready = state.connected && calibrationReady && estimateReady && runtime?.available && $('#dataset-select').value && !state.creating && !state.uploading && !state.estimateBusy && !isActive(state.run);
   $('#start-benchmark').disabled = !ready;
   $('#start-benchmark').textContent = state.creating ? 'Submitting…' : isActive(state.run) ? 'Benchmark in progress…' : desktop ? 'Run local benchmark →' : 'Run server benchmark →';
   $('#upload-dataset').disabled = !state.connected || state.uploading;
   $('#upload-model').disabled = !state.connected || !state.capabilities?.custom_model_uploads;
   $('#runtime-note').textContent = !state.connected ? 'Connect to the backend to upload a dataset and start a run.' : !calibrationReady ? (quantizing ? 'Choose three separate calibration, validation and test datasets.' : 'Choose a separate calibration dataset to enable fidelity search.') : runtime?.available ? (quantizing ? 'Measures FP32 and static INT8 on this CPU. Unsupported candidates are recorded with their failure reasons.' : model ? 'Your exported model runs locally with the declared image preprocessing. Unsupported signatures fail with an explanation.' : 'Sample presets use pretrained weights. The first run may download them.') : runtime?.reason || 'This runtime is unavailable. Install its optional backend dependencies before starting this format.';
+  if (state.connected && !estimateReady) $('#runtime-note').textContent = 'For Yes, connect an Edge Impulse project, load its targets and select a target. Choose No to run locally without uploading.';
 }
 async function connect() {
   const token = ++state.connectionToken; error(''); $('#server-status').textContent = 'Connecting to the benchmark server…'; $('#connect-server').disabled = true;
@@ -132,6 +136,7 @@ async function connect() {
   $('#server-status').textContent = state.connected ? `Connected · benchmarks run on ${workerName} · reports saved in SQLite` : 'Engine unavailable · reconnect to check the status';
   const failed = results.find(result => result.status === 'rejected'); if (failed) error(describeError(failed.reason));
   updateReadiness();
+  if (state.connected) refreshImpulseConnections();
 }
 function switchMode(mode) {
   if (mode === state.mode) return;
@@ -153,6 +158,8 @@ function showRun(run) {
       $('#run-format').value = request.format;
       $('#run-target').value = request.target;
       $('#run-strategy').value = request.strategy || 'fixed_profiles';
+      document.querySelector(`input[name="edge-estimate"][value="${request.edge_estimate?.enabled ? 'yes' : 'no'}"]`).checked = true;
+      $('#estimate-destination').hidden = !request.edge_estimate?.enabled;
       $('#dataset-select').value = request.dataset_id;
       $('#calibration-select').value = request.calibration_dataset_id || '';
       $('#validation-select').value = request.validation_dataset_id || '';
@@ -177,9 +184,9 @@ function showRun(run) {
   if (run.status === 'completed' && !run.report) error('This run completed without an attached report. Refresh the saved run to check again.');
   renderReport(); renderHistory(); updateReadiness(); if (run.status === "completed") refreshEdgeRecords();
 }
-async function loadRun(id) {
+async function loadRun(id, page = 'overview') {
   const token = ++state.pollToken; error('');
-  try { const run = await api.run(id); if (token !== state.pollToken || state.mode !== 'real') return; showRun(run); if (isActive(run)) pollRun(id, token); navigate('overview'); }
+  try { const run = await api.run(id); if (token !== state.pollToken || state.mode !== 'real') return; showRun(run); if (isActive(run)) pollRun(id, token); navigate(page); }
   catch (cause) { if (token === state.pollToken) error(describeError(cause)); }
 }
 async function pollRun(id, token) {
@@ -191,7 +198,7 @@ async function pollRun(id, token) {
     try {
       const run = await api.run(id); if (token !== state.pollToken || state.mode !== 'real') return;
       showRun(run);
-      if (!isActive(run)) { await refreshHistory(); if (run.status === 'completed') toast('Measured report saved on the server.'); return; }
+      if (!isActive(run)) { await refreshHistory(); if (run.status === 'completed') { toast('Measured report saved.'); await finishEstimate(run); } return; }
     } catch (cause) { if (token !== state.pollToken || state.mode !== 'real') return; error(describeError(cause)); $('#progress-detail').textContent = 'Status checks paused. The server run may continue; reconnect or check its status again.'; $('#resume-poll').hidden = false; return; }
   }
 }
@@ -200,12 +207,14 @@ async function startBenchmark(event) {
   const token = ++state.pollToken;
   const strategy = $('#run-strategy').value;
   const payload = { model_id: $('#run-model').value, format: $('#run-format').value, target: $('#run-target').value, strategy, calibration_dataset_id: strategy !== 'fixed_profiles' ? $('#calibration-select').value : null, validation_dataset_id: ['quantization_compare', 'deployment_search'].includes(strategy) ? $('#validation-select').value : null, quantization: { calibration_method: $('#quant-calibration').value, per_channel: $('#quant-per-channel').value === 'true' }, dataset_id: $('#dataset-select').value, settings: { warmup_runs: Number($('#warmup-runs').value), measured_runs: Number($('#measured-runs').value), threads: Number($('#cpu-threads').value), atol: Number($('#atol').value), rtol: Number($('#rtol').value) } };
+  const project = selectedImpulseProject('#test-ei-project');
+  payload.edge_estimate = estimateEnabled() ? {enabled:true,project_id:project.project_id,project_name:project.name,device:$('#test-ei-device').value} : {enabled:false};
   if (strategy === 'deployment_search') {
     const optional = selector => $(selector).value.trim() === '' ? null : Number($(selector).value);
     payload.constraints = { objective: $('#search-objective').value, max_accuracy_loss_pp: optional('#constraint-accuracy'), max_size_mib: optional('#constraint-size'), max_host_latency_ms: optional('#constraint-latency') };
     payload.search = {max_candidates:Number($('#search-candidates').value),sensitivity_probes:Number($('#search-probes').value),diagnostic_samples:Number($('#search-samples').value),max_seconds:Number($('#search-seconds').value)};
   }
-  try { const run = await api.createRun(payload); if (state.mode !== 'real' || token !== state.pollToken) return; showRun(run); await refreshHistory(); if (isActive(run)) pollRun(run.id, token); }
+  try { const run = await api.createRun(payload); if (state.mode !== 'real' || token !== state.pollToken) return; state.pendingEstimate = payload.edge_estimate.enabled ? {run_id:run.id,choice:payload.edge_estimate,connection_id:project.connection_id} : null; showRun(run); await refreshHistory(); if (isActive(run)) pollRun(run.id, token); else if (run.status === 'completed') await finishEstimate(run); }
   catch (cause) { if (state.mode === 'real' && token === state.pollToken) error(describeError(cause)); }
   finally { state.creating = false; updateReadiness(); }
 }
@@ -249,7 +258,23 @@ $('#layer-candidate').addEventListener('change', () => { state.layerLimit = 100;
 $('#layer-view').addEventListener('change', () => { state.layerLimit = 100; renderLayers(); });
 $('#more-layers').addEventListener('click', () => { state.layerLimit = (state.layerLimit || 100) + 100; renderLayers(); });
 $('#refresh-history').addEventListener('click', async () => { try { error(''); await refreshHistory(); } catch (cause) { error(describeError(cause)); } });
-$('#run-history').addEventListener('click', event => { const button = event.target.closest('[data-run-id]'); if (button) loadRun(button.dataset.runId); });
+$('#run-history').addEventListener('click', async event => {
+  const removal = event.target.closest('[data-delete-run]');
+  if (removal) {
+    const id = removal.dataset.deleteRun;
+    if (!await confirmHistoryDelete(id)) return;
+    removal.disabled = true; error('');
+    try {
+      const result = await api.deleteRun(id);
+      if (state.pendingEstimate?.run_id === id) state.pendingEstimate = null;
+      if (state.run?.id === id) { state.pollToken++; state.run = null; state.report = null; state.edgeRecords = []; $('#run-progress').hidden = true; renderReport(); }
+      await refreshHistory(); updateReadiness();
+      toast(result.artifacts_removed ? 'Saved test and generated artifacts deleted. Models and datasets kept.' : 'History deleted. Some locked files remain in a local .deleted_ folder; models and datasets kept.');
+    } catch (cause) { error(describeError(cause)); removal.disabled = false; }
+    return;
+  }
+  const button = event.target.closest('[data-run-id]'); if (button) loadRun(button.dataset.runId);
+});
 $('#resume-poll').addEventListener('click', () => { if (state.run?.id) loadRun(state.run.id); });
 $('#model-artifacts').addEventListener('click', async event => {
   const button = event.target.closest('[data-artifact]'); if (!button || state.mode !== 'real') return;
@@ -361,6 +386,7 @@ function renderDeveloperReport() {
   renderEdge();
 }
 function renderEdge() {
+  renderImpulse();
   const active = state.mode === 'real' && state.run?.status === 'completed' && state.report;
   $('.device-latency strong').textContent = 'UNAVAILABLE';
   $('#edge-workspace').hidden = !active;
@@ -371,19 +397,14 @@ function renderEdge() {
   $('#edge-artifact').innerHTML = '<option value="">Select a TFLite artifact</option>' + (state.report.artifacts || []).map((x, i) => x.format === 'tflite' ? `<option value="${i}">${escapeHtml(human(x.profile))} · ${number(x.size_bytes / 1024, 1)} KiB · ${escapeHtml(x.sha256.slice(0, 12))}…</option>` : '').join('');
   if ([...$('#edge-artifact').options].some(x => x.value === previous)) $('#edge-artifact').value = previous;
   $('#prepare-edge').disabled = !state.report.artifacts?.some(x => x.format === 'tflite');
-  $('#submit-ei').disabled = $('#prepare-edge').disabled;
   $('#edge-format-note').textContent = $('#prepare-edge').disabled ? 'This run has no evaluated TFLite artifact. Import and benchmark a TFLite classifier before requesting provider estimates. Phase 2 ONNX candidates require a separate validated TFLite path.' : 'Choose the exact TFLite artifact to associate with device and provider evidence.';
   const oldPackage = $('#edge-package').value;
   const records = state.edgeRecords || [];
   $('#edge-package').innerHTML = '<option value="">Select a prepared firmware package</option>' + records.filter(x => x.kind === 'package').map(x => `<option value="${escapeHtml(x.id)}">${escapeHtml(human(x.profile))} · ${escapeHtml(x.id.slice(0, 16))} · ${x.arena_capacity_bytes / 1024} KiB arena</option>`).join('');
   if (records.some(x => x.id === oldPackage)) $('#edge-package').value = oldPackage;
-  const oldJob = $('#ei-job').value;
-  $('#ei-job').innerHTML = '<option value="">Select a submitted profile job</option>' + records.filter(x => x.kind === 'edge_impulse_job').map(x => `<option value="${escapeHtml(x.id)}">${escapeHtml(x.device)} · job ${x.job_id}</option>`).join('');
-  if (records.some(x => x.id === oldJob)) $('#ei-job').value = oldJob;
   const results = state.report.edge_results || [];
   const hardware = results.filter(x => x.kind === 'hardware');
   $('#hardware-evidence').innerHTML = hardware.length ? developerTable(hardware.map(x => ({ ...x, chip: x.device_report?.chip })), ['profile', 'chip', 'source', 'latency_p50_ms', 'latency_p95_ms', 'arena_used_bytes', 'output_max_abs', 'within_tolerance']) : '<p class="field-help">ESP32 — UNAVAILABLE. No physical benchmark recorded for this run. Deployment is a later add-on.</p>';
-  $('#ei-evidence').innerHTML = results.filter(x => x.kind === 'edge_impulse_result').map(x => `<article class="provider-result"><strong>Edge Impulse · ESTIMATED · ${escapeHtml(x.device)}</strong><pre>${escapeHtml(JSON.stringify(x.provider_result, null, 2))}</pre><p>Profiled model SHA-256: ${escapeHtml(x.model_sha256)} · Recorded: ${escapeHtml(x.created_at)}. Accuracy link: ${escapeHtml(state.report.evidence_sections?.edge_impulse?.records?.find(r => r.id === x.id)?.accuracy_link || 'UNAVAILABLE')}.</p></article>`).join('') || '<p class="field-help">UNAVAILABLE · Tested with mocks only; no live profile recorded in this run. Enter your project/key, load targets and explicitly consent to upload an evaluated TFLite artifact.</p>';
   const latest = hardware.at(-1);
   $('.device-latency strong').textContent = latest ? `${number(latest.latency_p50_ms, 3)} ms · ${latest.device_report.chip}` : 'UNAVAILABLE';
 }
@@ -428,19 +449,140 @@ $('#import-edge').addEventListener('click', event => edgeAction(event.currentTar
   const file = $('#edge-json').files[0]; if (!file || file.size > 200000) throw new Error('Choose a device JSON report up to 200 KB.');
   await api.importDeviceReport(selectedPackage(), JSON.parse(await file.text())); await reloadEdgeReport(); return 'Imported device report saved with its import provenance.';
 }));
-$('#load-ei-targets').addEventListener('click', event => edgeAction(event.currentTarget, async () => {
-  const targets = await api.profileTargets(Number($('#ei-project').value), $('#ei-key').value);
-  $('#ei-device').innerHTML = '<option value="">Select a provider target</option>' + targets.map(x => `<option value="${escapeHtml(x.mcu)}">${escapeHtml(x.name)}</option>`).join('');
-  return targets.length ? 'Supported targets loaded from your project. This is provider analysis, not a measurement of your board.' : 'No profiling targets returned for this project.';
+function estimateEnabled() { return document.querySelector('input[name="edge-estimate"]:checked')?.value === 'yes'; }
+let deleteConfirmation;
+function confirmHistoryDelete(id) {
+  if (deleteConfirmation) return Promise.resolve(false);
+  $('#delete-test-id').textContent = id;
+  return new Promise(resolve => { deleteConfirmation = resolve; $('#delete-test-dialog').showModal(); });
+}
+function settleHistoryDelete(accepted) { const resolve = deleteConfirmation; deleteConfirmation = null; $('#delete-test-dialog').close(); resolve?.(accepted); }
+$('#cancel-delete-test').addEventListener('click', () => settleHistoryDelete(false));
+$('#confirm-delete-test').addEventListener('click', () => settleHistoryDelete(true));
+$('#delete-test-dialog').addEventListener('cancel', event => { event.preventDefault(); settleHistoryDelete(false); });
+function impulseProjects() { return state.impulseConnections.flatMap(connection => connection.projects.map(project => ({connection_id:connection.id, project_id:project.id, name:project.name, value:`${connection.id}:${project.id}`}))); }
+function selectedImpulseProject(selector = '#ei-project') { return impulseProjects().find(project => project.value === $(selector).value); }
+function renderImpulseConnections() {
+  const projects = impulseProjects();
+  for (const selector of ['#ei-project', '#test-ei-project']) {
+    const previous = $(selector).value;
+    $(selector).innerHTML = '<option value="">Select a connected project</option>' + projects.map(p => `<option value="${escapeHtml(p.value)}">${escapeHtml(p.name)} · ${p.project_id}</option>`).join('');
+    if (projects.some(p => p.value === previous)) $(selector).value = previous;
+    else if (projects.length === 1) $(selector).value = projects[0].value;
+  }
+  $('#ei-connection-badge').textContent = projects.length ? `${projects.length} connected project${projects.length === 1 ? '' : 's'}` : 'Not connected';
+  $('#ei-connection-badge').className = `status ${projects.length ? 'pass' : 'neutral'}`;
+  $('#ei-connections').innerHTML = state.impulseConnections.map(connection => `<div class="connected-project"><span><strong>${escapeHtml(connection.projects.map(p => p.name).join(', '))}</strong><small>Project-key access · ${connection.projects.map(p => p.id).join(', ')}</small></span><button class="text-button" data-disconnect="${escapeHtml(connection.id)}">Disconnect</button></div>`).join('');
+  renderImpulseTargets('#ei-project', '#ei-device'); renderImpulseTargets('#test-ei-project', '#test-ei-device');
+  updateReadiness();
+}
+function renderImpulseTargets(projectSelector, targetSelector) {
+  const previous = $(targetSelector).value, targets = state.impulseTargets[$(projectSelector).value] || [];
+  $(targetSelector).innerHTML = '<option value="">Select a provider target</option>' + targets.map(x => `<option value="${escapeHtml(x.mcu)}">${escapeHtml(x.name)}</option>`).join('');
+  if (targets.some(t => t.mcu === previous)) $(targetSelector).value = previous;
+}
+async function refreshImpulseConnections() {
+  try { const result = await api.impulseConnections(); state.impulseConnections = result.connections; renderImpulseConnections(); }
+  catch (cause) { $('#ei-connection-status').textContent = describeError(cause); }
+}
+function renderImpulse() {
+  const active = state.mode === 'real' && state.run?.status === 'completed' && state.report;
+  $('#ei-workspace').hidden = !active; $('#ei-empty').hidden = Boolean(active);
+  $('#ei-run-label').textContent = active ? `${displayName(state.report.model)} · ${state.run.id}` : 'Select a completed test, or create a new test in Overview.';
+  const choice = state.run?.request?.edge_estimate;
+  $('#ei-choice-summary').textContent = !state.run ? 'New tests ask Yes or No in Overview. An estimate needs an evaluated TFLite model.' : choice?.enabled ? `This test requested Yes · ${choice.project_name || 'Project'} (${choice.project_id}) · ${choice.device}. A submitted job and saved provider response establish whether an estimate was completed.` : 'This test did not request an automatic estimate. You can explicitly upload an evaluated model here.';
+  $('#submit-ei').disabled = !active || state.estimateBusy;
+  if (!active) return;
+  const previous = $('#ei-artifact').value;
+  $('#ei-artifact').innerHTML = '<option value="">Select the evaluated TFLite model</option>' + (state.report.artifacts || []).map((x,i) => x.format === 'tflite' ? `<option value="${i}">${escapeHtml(human(x.profile))} · ${number(x.size_bytes/1024,1)} KiB · ${escapeHtml(x.sha256.slice(0,12))}…</option>` : '').join('');
+  const artifacts = [...$('#ei-artifact').options].filter(x => x.value !== '');
+  if (artifacts.some(x => x.value === previous)) $('#ei-artifact').value = previous;
+  else if (artifacts.length === 1) $('#ei-artifact').value = artifacts[0].value;
+  $('#submit-ei').disabled = !artifacts.length || state.estimateBusy;
+  $('#ei-format-note').textContent = artifacts.length ? 'Only the exact model evaluated on this test’s held-out images can be uploaded. Model and dataset hashes link the estimate to laptop accuracy.' : 'UNAVAILABLE · This test has no evaluated TFLite artifact. ONNX accuracy cannot be attached to a different TFLite model. Import and benchmark a TFLite classifier first.';
+  const oldJob = $('#ei-job').value, records = state.edgeRecords;
+  $('#ei-job').innerHTML = '<option value="">Select a submitted job</option>' + records.filter(x => x.kind === 'edge_impulse_job').map(x => `<option value="${escapeHtml(x.id)}">Project ${x.project_id} · ${escapeHtml(x.device)} · job ${x.job_id}</option>`).join('');
+  if (records.some(x => x.id === oldJob)) $('#ei-job').value = oldJob;
+  const results = (state.report.edge_results || []).filter(x => x.kind === 'edge_impulse_result');
+  $('#ei-evidence').innerHTML = results.map(x => `<article class="provider-result"><strong>ESTIMATED · ${escapeHtml(x.device)}</strong><p>Project: ${escapeHtml(x.project_name || x.project_id)} · Job ${x.job_id} · Recorded ${escapeHtml(new Date(x.created_at).toLocaleString())}</p><p>Accuracy link: ${escapeHtml(state.report.evidence_sections?.edge_impulse?.records?.find(r => r.id === x.id)?.accuracy_link || 'UNAVAILABLE')} · Model SHA-256: <code>${escapeHtml(x.model_sha256)}</code></p><details><summary>Provider response · timing, RAM and flash estimates</summary><pre>${escapeHtml(JSON.stringify(x.provider_result,null,2))}</pre></details><p>Laptop measurements remain separate. Physical ESP32 measurements: ${(state.report.edge_results || []).some(r => r.kind === 'hardware') ? 'see Edge hardware' : 'UNAVAILABLE'}.</p></article>`).join('') || '<p class="field-help">UNAVAILABLE · No completed provider response is saved for this test yet. Submitted jobs can be fetched after processing finishes.</p>';
+}
+async function impulseAction(button, action) {
+  if (state.mode !== 'real' || !state.connected) return error('Use Local benchmark and connect the local engine first.');
+  error(''); button.disabled = true; $('#ei-status').textContent = 'Working…';
+  try { const message = await action(); $('#ei-status').textContent = message; }
+  catch (cause) { error(describeError(cause)); $('#ei-status').textContent = describeError(cause); }
+  finally { button.disabled = false; renderImpulse(); }
+}
+async function submitImpulseEstimate(run, artifact_index, destination) {
+  if (state.estimateBusy) throw new Error('An estimate request is already in progress.');
+  state.estimateBusy = true; updateReadiness(); renderImpulse();
+  try {
+    // One POST only. A timeout is never retried: Studio may have accepted it.
+    const job = await api.startProfile(run.id, {artifact_index, project_id:destination.project_id, device:destination.device, connection_id:destination.connection_id, consent_upload:true});
+    if (state.run?.id === run.id) { await refreshEdgeRecords(); $('#ei-job').value = job.id; $('#ei-status').textContent = `Job ${job.job_id} submitted to project ${job.project_id}. Waiting for the provider estimate…`; }
+    for (let attempt=0; attempt<12; attempt++) {
+      await new Promise(resolve => setTimeout(resolve,10000));
+      if (state.mode !== 'real' || state.run?.id !== run.id) return 'Job submitted. Open this test and fetch its estimate after processing finishes.';
+      try { await api.refreshProfile(job.id,{connection_id:destination.connection_id}); await reloadEdgeReport(); return 'Provider estimate saved in SQLite and included in HTML, JSON and CSV reports.'; }
+      catch (cause) {
+        if (cause.status !== 502 || !cause.message.includes('job may still be running')) throw cause;
+      }
+    }
+    return 'Job submitted; the provider has not finished yet. Use Fetch completed estimate later. Do not submit the model again.';
+  } finally { state.estimateBusy = false; updateReadiness(); renderImpulse(); }
+}
+async function finishEstimate(run) {
+  const pending = state.pendingEstimate;
+  if (!pending || pending.run_id !== run.id) return;
+  state.pendingEstimate = null; // Opening history or repeating polls cannot upload again.
+  const plan = window.EdgeLensEstimate.afterBenchmark(run.report,pending.choice);
+  if (plan.action === 'skip') return;
+  navigate('impulse'); $('#ei-status').textContent = plan.reason || 'Preparing the estimate you requested…';
+  $('#ei-project').value = `${pending.connection_id}:${pending.choice.project_id}`;
+  renderImpulseTargets('#ei-project','#ei-device'); $('#ei-device').value = pending.choice.device;
+  if (plan.action !== 'upload') return;
+  $('#ei-artifact').value = String(plan.artifact_index);
+  try { $('#ei-status').textContent = await submitImpulseEstimate(run,plan.artifact_index,{...pending.choice,connection_id:pending.connection_id}); }
+  catch (cause) { error(describeError(cause)); $('#ei-status').textContent = `Laptop report saved. Estimate not completed: ${describeError(cause)} Check Studio before uploading again.`; }
+}
+$('#ei-browser-login').addEventListener('click', async () => {
+  try {
+    if (window.EdgeLensDesktop) await window.EdgeLensDesktop.signInEdgeImpulse();
+    else window.open('https://studio.edgeimpulse.com/','_blank','noopener,noreferrer');
+    $('#ei-connection-status').textContent = 'Sign in in your browser, open the project’s Dashboard → Keys, then return and connect its Read + Write key. Browser sign-in alone does not authorize EdgeLens.';
+  } catch (cause) { error(describeError(cause)); }
+});
+$('#ei-connect').addEventListener('click', event => impulseAction(event.currentTarget, async () => {
+  try { await api.connectImpulse($('#ei-key').value.trim()); await refreshImpulseConnections(); $('#ei-connection-status').textContent = 'Project verified with Edge Impulse. The key is held in engine memory only; reconnect after closing the tool.'; return 'Project connected. Load targets, then return to Overview to select Yes for a new test.'; }
+  finally { $('#ei-key').value = ''; }
 }));
-$('#ei-project').addEventListener('input', () => { $('#ei-device').innerHTML = '<option value="">Load targets for this project</option>'; $('#ei-consent').checked = false; });
-$('#submit-ei').addEventListener('click', event => edgeAction(event.currentTarget, async () => {
-  if (!$('#ei-consent').checked) throw new Error('Confirm you want to send this model to Edge Impulse.');
-  if (!$('#ei-device').value) throw new Error('Load and select a supported profiling target.');
-  const job = await api.startProfile(state.run.id, {artifact_index: selectedArtifact(), project_id: Number($('#ei-project').value), device: $('#ei-device').value.trim(), api_key: $('#ei-key').value, consent_upload: true});
-  await refreshEdgeRecords(); $('#ei-job').value = job.id; return 'Edge Impulse job submitted. Check the result after processing finishes.';
+$('#ei-connections').addEventListener('click', event => {
+  const button = event.target.closest('[data-disconnect]'); if (!button) return;
+  impulseAction(button,async () => { await api.disconnectImpulse(button.dataset.disconnect); await refreshImpulseConnections(); $('#ei-consent').checked = false; return 'Project disconnected and its credential removed from engine memory.'; });
+});
+$('#load-ei-targets').addEventListener('click', event => impulseAction(event.currentTarget, async () => {
+  const project = selectedImpulseProject(); if (!project) throw new Error('Connect and select a project first.');
+  const targets = await api.profileTargets(project.project_id,{connection_id:project.connection_id});
+  state.impulseTargets[project.value] = targets;
+  renderImpulseTargets('#ei-project','#ei-device'); renderImpulseTargets('#test-ei-project','#test-ei-device');
+  updateReadiness(); return targets.length ? 'Supported targets loaded. Select a target here, or in Overview for a new test.' : 'This project returned no supported profiling targets.';
 }));
-$('#refresh-ei').addEventListener('click', event => edgeAction(event.currentTarget, async () => {
-  if (!$('#ei-job').value) throw new Error('Select a submitted Edge Impulse job.');
-  await api.refreshProfile($('#ei-job').value, $('#ei-key').value); await reloadEdgeReport(); return 'Edge Impulse analysis saved separately from hardware measurements.';
+for (const [project,target] of [['#ei-project','#ei-device'],['#test-ei-project','#test-ei-device']]) $(project).addEventListener('change', () => { $(target).value = ''; renderImpulseTargets(project,target); $('#ei-consent').checked = false; updateReadiness(); });
+$('#ei-device').addEventListener('change', () => { if ($('#ei-project').value === $('#test-ei-project').value) $('#test-ei-device').value = $('#ei-device').value; $('#ei-consent').checked = false; updateReadiness(); });
+$('#test-ei-device').addEventListener('change', updateReadiness);
+document.querySelectorAll('input[name="edge-estimate"]').forEach(input => input.addEventListener('change', () => { $('#estimate-destination').hidden = !estimateEnabled(); updateReadiness(); }));
+$('#ei-run').addEventListener('change', () => { $('#ei-consent').checked = false; if ($('#ei-run').value) loadRun($('#ei-run').value,'impulse'); });
+$('#ei-artifact').addEventListener('change', () => { $('#ei-consent').checked = false; });
+$('#submit-ei').addEventListener('click', event => impulseAction(event.currentTarget, async () => {
+  if (state.run?.status !== 'completed') throw new Error('Select a completed test.');
+  if (!$('#ei-consent').checked) throw new Error('Confirm the model upload to the selected project.');
+  const project = selectedImpulseProject(); if (!project || !$('#ei-device').value) throw new Error('Connect a project and load/select a target.');
+  if ($('#ei-artifact').value === '') throw new Error('Select an evaluated TFLite artifact.');
+  return submitImpulseEstimate(state.run,Number($('#ei-artifact').value),{...project,device:$('#ei-device').value});
+}));
+$('#refresh-ei').addEventListener('click', event => impulseAction(event.currentTarget, async () => {
+  const job = state.edgeRecords.find(x => x.id === $('#ei-job').value && x.kind === 'edge_impulse_job');
+  if (!job) throw new Error('Select a submitted job for this test.');
+  const project = selectedImpulseProject(); if (!project || project.project_id !== job.project_id) throw new Error(`Connect and select the original project ${job.project_id} to fetch this estimate.`);
+  await api.refreshProfile(job.id,{connection_id:project.connection_id}); await reloadEdgeReport(); return 'Provider estimate saved separately from laptop and hardware measurements.';
 }));

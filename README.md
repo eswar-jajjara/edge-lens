@@ -1,10 +1,18 @@
-# EdgeLens — Deployment Validation Tool 0.7.0
+# EdgeLens — Deployment Validation Tool 0.8.0
 
 A Windows desktop developer tool for validating image-classifier conversion and investigating edge readiness with separately labelled provider estimates. Electron starts a private local Python engine automatically; SQLite stores models, datasets, metrics, layer findings and reports. Model binaries stay on disk with SHA256 metadata in SQLite.
 
 ## Open it
 
 **From GitHub source:** install 64-bit Python 3.12 and 64-bit Node.js 22.12+, double-click `setup-windows.cmd` once, then `start-desktop.cmd`. Setup installs the tested dependency versions and checks a real tiny PT2/ONNX conversion. `check-windows.cmd` verifies an existing setup. See [the teammate setup guide](docs/TEAM-SETUP.md) for prerequisites, diagnostics and sharing experiments.
+
+**New in 0.8.0:** a separate **Edge Impulse** section, browser sign-in shortcut,
+verified project-key connections and project/target selection for each test.
+Overview asks **Estimate this test in Edge Impulse? Yes / No**. Reports & history
+can delete an individual finished test after confirmation. See
+[the connection and testing walkthrough](docs/EDGE-IMPULSE-CONNECTION.md).
+Browser sign-in alone does not authorize this tool; account-wide OAuth project
+discovery is not configured. Project keys connect their own projects.
 
 **For Phase 2:** use current source, select an uploaded PT2 or FP32 ONNX model, then choose **Optimize deployment · validation search**. Upload separate calibration, validation and test ZIPs. Set a selection objective and accuracy/size/host-latency limits. See [the deployment search guide](docs/DEPLOYMENT-SEARCH.md).
 
@@ -22,7 +30,8 @@ The older [Windows x64 portable ZIP v0.4.1](https://github.com/eswar-jajjara/edg
 - Measure labelled top-1 accuracy, prediction agreement, output MAE/max error, conversion/search time, mean/median/p95 host latency and serialized size.
 - Inspect conservative per-operation mappings, an unoptimized diagnostic graph, per-image predictions, runtime versions, hashes and exact settings. Unmapped operations remain unverified.
 - Generate an ESP-IDF package for a compatible small TFLite model; capture matching ESP32 USB reports or import their JSON. Physical device results are separate from host metrics. EdgeLens does not flash boards automatically.
-- Optionally upload a selected TFLite artifact to Edge Impulse for resource profiling. Explicit user action is required; keys are not persisted and provider estimates stay separate from real-board measurements.
+- Connect one or more Edge Impulse projects with session-only keys, load their targets and choose a destination per test. No requires no upload; Yes explicitly authorizes the evaluated TFLite upload after a successful test. Provider estimates stay separate from host and physical-board measurements. No hardware is needed for this optional step.
+- Delete a completed or failed test's local report history and generated artifacts after confirmation. Original uploaded models and datasets stay; active benchmarks cannot be deleted.
 - Export complete HTML/CSV/JSON reports. Use `backend/cli.py` for a headless software-tool workflow.
 
 TFLite **inference** works in this Windows engine, including per-tensor int8 inputs/outputs. PT2-to-TFLite **conversion** requires the optional Linux LiteRT Torch stack and is not runtime-verified here. Raspberry Pi remains a deployment goal; its hardware runner is future work. No universal converter superiority, exact simulated device timing, peak RAM or energy claim is made.
@@ -52,7 +61,7 @@ npm run desktop:package
 
 The custom integration suite runs tiny real PT2/ONNX, static INT8 QDQ, and FP32/int8 TFLite classifiers using synthetic fixtures. It verifies behavior, not project accuracy. The optional full pretrained MobileNetV2 smoke test uses `EDGELENS_ML_SMOKE=1` and may download official weights.
 
-Packaging copies Python sources because the exporter inspects them. This is an unsigned portable development build, not a signed installer. Fresh Windows setup, native desktop startup and a relocated portable runtime are verified in [Windows CI](https://github.com/eswar-jajjara/edge-lens/actions/runs/36851712108); see [verification](docs/VERIFICATION.md). Use the setup/runtime check on each teammate's laptop.
+Packaging copies Python sources because the exporter inspects them. This is an unsigned portable development build, not a signed installer. The [Windows CI workflow](https://github.com/eswar-jajjara/edge-lens/actions/workflows/windows-desktop.yml) checks fresh setup, native desktop startup and a relocated portable runtime for each source commit; see [verification](docs/VERIFICATION.md) for executed results. Use the setup/runtime check on each teammate's laptop. Version 0.8.0 is a source update; no new public portable ZIP is included.
 
 See [architecture and frameworks](docs/ARCHITECTURE.md), [methodology](docs/BENCHMARKING.md), [API](docs/API.md) and [deployment](docs/DEPLOYMENT.md).
 

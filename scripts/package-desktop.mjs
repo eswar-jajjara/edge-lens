@@ -26,6 +26,7 @@ for (const name of ['app', 'engine', 'ui']) {
 const appDir = path.join(resources, 'app');
 await mkdir(path.join(appDir, 'desktop'), { recursive: true });
 await copyFile(path.join(root, 'desktop', 'main.cjs'), path.join(appDir, 'desktop', 'main.cjs'));
+await copyFile(path.join(root, 'desktop', 'preload.cjs'), path.join(appDir, 'desktop', 'preload.cjs'));
 const source = JSON.parse(await readFile(path.join(root, 'package.json'), 'utf8'));
 await writeFile(path.join(appDir, 'package.json'), JSON.stringify({ name: source.name, productName: 'EdgeLens', version: source.version, main: 'desktop/main.cjs' }, null, 2));
 await cp(engine, path.join(resources, 'engine'), { recursive: true });

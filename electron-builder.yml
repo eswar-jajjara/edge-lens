@@ -5,6 +5,7 @@ directories:
   output: release
 files:
   - desktop/main.cjs
+  - desktop/preload.cjs
   - package.json
 extraResources:
   - from: desktop/engine

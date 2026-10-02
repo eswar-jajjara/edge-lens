@@ -48,6 +48,7 @@ class ValidationService:
             else:
                 report = self.runner(payload, dataset, directory)
             report.update(run_id=run["id"], created_at=run["created_at"], settings=run["request"]["settings"])
+            report["edge_estimate_request"] = run["request"].get("edge_estimate", {"enabled": False})
             self.repository.update_run(run["id"], "completed", report=report)
         except Exception as error:
             self.repository.update_run(run["id"], "failed", error=f"{type(error).__name__}: {str(error)[:1200]}")

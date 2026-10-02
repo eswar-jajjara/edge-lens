@@ -67,6 +67,19 @@ def list_targets(project_id, key):
             and re.fullmatch(r"[a-zA-Z0-9_.+ -]{1,120}", r["mcu"]) and len(r["name"]) <= 200]
 
 
+def list_projects(key):
+    result = call_api("GET", "/projects", key)
+    rows = result.get("projects")
+    if not isinstance(rows, list):
+        raise ValueError("Edge Impulse returned no accessible project list")
+    projects = {}
+    for row in rows:
+        if (isinstance(row, dict) and type(row.get("id")) is int and row["id"] > 0
+                and isinstance(row.get("name"), str) and 0 < len(row["name"]) <= 200):
+            projects[row["id"]] = {"id": row["id"], "name": row["name"]}
+    return list(projects.values())
+
+
 def profile_result(project_id, job_id, key):
     result = call_api("GET", f"/{project_id}/jobs/profile-tflite/{job_id}/result", key)
     return result

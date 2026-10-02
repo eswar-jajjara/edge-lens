@@ -23,3 +23,20 @@ input{font:inherit;color:#2d4555}input:focus-visible{outline:3px solid #349c7c;o
 .layer-toolbar .filter-label { min-width: 160px; flex: 1; }
 #layer-explanation { padding: 0 24px; }
 #more-layers { margin: 16px 24px; }
+
+/* Optional provider connection is available before a benchmark is selected. */
+.connection-steps{display:grid;grid-template-columns:1fr 1fr;gap:28px;margin-bottom:20px}
+.connection-steps>div{border:1px solid #dbe3e9;border-radius:8px;padding:18px;background:#fbfdfc}
+.connection-steps h3{margin:10px 0}.connection-steps p{font-size:13px;line-height:1.8;color:#607785}
+.connection-steps .button{margin-top:16px}
+.connected-project{display:flex;justify-content:space-between;align-items:center;gap:16px;padding:14px 16px;border:1px solid #dae7df;border-radius:7px;margin:10px 0;background:#f6fbf7}
+.connected-project small{display:block;margin-top:5px;color:#607785;font-size:12px}
+.estimate-choice{border:1px solid #dae7df;border-radius:8px;padding:18px 20px;margin:22px 0;background:#fbfdfc}
+.estimate-choice legend{font-size:14px;font-weight:700;padding:0 6px}.estimate-choice>label{display:block;font-size:13px;line-height:1.7;margin:9px 0}.estimate-choice input[type=radio]{margin-right:8px;accent-color:#286448}
+.estimate-choice .setup-grid{margin:18px 0}.estimate-choice .field-help{margin-bottom:0}
+.history-entry{display:flex;align-items:center;gap:12px;border-bottom:1px solid #edf1f4}.history-entry .history-row{flex:1;min-width:0;border-bottom:0}
+.delete-history{color:#9e3d34;padding:10px;flex-shrink:0}.delete-history:disabled{opacity:.4;cursor:not-allowed}
+.provider-result code{overflow-wrap:anywhere;font-size:11px}.provider-result p{font-size:12px;line-height:1.7}.provider-result summary{cursor:pointer;margin-top:14px;font-size:13px}
+#delete-test-dialog{max-width:540px;border:1px solid #dbe3e9;border-radius:12px;padding:28px;box-shadow:0 18px 70px #101e2c33;color:#233d4a;background:white}
+#delete-test-dialog::backdrop{background:#101e2c88}#delete-test-dialog h2{margin-top:0;font-size:22px}#delete-test-dialog p{font-size:14px;line-height:1.7}#delete-test-dialog code{font-size:12px;overflow-wrap:anywhere}.button.danger{background:#9e3d34;color:white;border-color:#9e3d34}
+@media(max-width:1000px){.connection-steps{grid-template-columns:1fr;gap:16px}}

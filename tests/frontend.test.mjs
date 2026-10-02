@@ -11,6 +11,45 @@ function client(fetch) {
 }
 const success = body => ({ ok: true, json: async () => body });
 
+test('project connection and listing never put credentials in URLs', async () => {
+  const calls = [], api = client(async (url, options) => { calls.push({url,options}); return success({connections:[]}); });
+  await api.connectImpulse('transient-test-key'); await api.impulseConnections();
+  assert.deepEqual(JSON.parse(calls[0].options.body), {api_key:'transient-test-key'});
+  assert.equal(calls[1].options.body, undefined);
+  assert.ok(calls.every(call => !call.url.includes('transient-test-key')));
+});
+
+test('connected profile uses a scoped connection instead of resending a key', async () => {
+  const calls = [], api = client(async (url,options) => { calls.push({url,options}); return success([]); });
+  await api.profileTargets(7,{connection_id:'eic_example'});
+  await api.refreshProfile('job/one',{connection_id:'eic_example'});
+  assert.deepEqual(JSON.parse(calls[0].options.body), {project_id:7,connection_id:'eic_example'});
+  assert.deepEqual(JSON.parse(calls[1].options.body), {connection_id:'eic_example'});
+  assert.ok(calls[1].url.includes('job%2Fone'));
+});
+
+test('disconnect supports an empty 204 response and history deletion encodes the ID', async () => {
+  const calls = [], api = client(async (url,options) => { calls.push({url,options}); return {ok:true,status:204,json:async () => { throw new Error('empty'); }}; });
+  assert.equal(await api.disconnectImpulse('eic/one'),null);
+  await api.deleteRun('run/one');
+  assert.equal(calls[0].options.method,'DELETE'); assert.ok(calls[0].url.endsWith('eic%2Fone'));
+  assert.equal(calls[1].options.method,'DELETE'); assert.ok(calls[1].url.endsWith('run%2Fone'));
+});
+
+test('estimate planning skips No and refuses to infer TFLite resources from ONNX', async () => {
+  const context = {window:{}};
+  vm.runInNewContext(await readFile(new URL('../frontend/src/estimate-plan.js',import.meta.url),'utf8'),context);
+  const plan = context.window.EdgeLensEstimate.afterBenchmark;
+  const artifact = {format:'tflite',sha256:'a'.repeat(64)};
+  assert.equal(plan({source:'measured',artifacts:[artifact]},{enabled:false}).action,'skip');
+  assert.equal(plan({source:'demo',artifacts:[artifact]},{enabled:true}).action,'unavailable');
+  assert.equal(plan({source:'measured',artifacts:[{format:'onnx',sha256:'a'.repeat(64)}]},{enabled:true}).action,'unavailable');
+  assert.equal(plan({source:'measured',artifacts:[{format:'tflite'}]},{enabled:true}).action,'unavailable');
+  assert.equal(plan({source:'measured',artifacts:[artifact,artifact]},{enabled:true}).action,'select');
+  const result = plan({source:'measured',artifacts:[{format:'onnx'},artifact]},{enabled:true});
+  assert.equal(result.action,'upload'); assert.equal(result.artifact_index,1);
+});
+
 test('provider target discovery keeps the transient key in the request body', async () => {
   let requestedUrl, options;
   const api = client(async (url, value) => { requestedUrl = url; options = value; return success([{mcu:'target',name:'Target'}]); });

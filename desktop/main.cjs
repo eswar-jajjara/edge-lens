@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Menu, dialog, session } = require('electron');
+const { app, BrowserWindow, Menu, dialog, session, ipcMain, shell } = require('electron');
 const { spawn } = require('node:child_process');
 const { randomBytes } = require('node:crypto');
 const fs = require('node:fs');
@@ -61,12 +61,16 @@ async function start() {
   await session.defaultSession.cookies.set({ url: origin, name: 'edgelens_session', value: token, httpOnly: true, sameSite: 'strict' });
   session.defaultSession.setPermissionRequestHandler((_contents, _permission, callback) => callback(false));
   session.defaultSession.setPermissionCheckHandler(() => false);
-  mainWindow = new BrowserWindow({ width: 1440, height: 960, minWidth: 900, minHeight: 650, show: false, title: 'EdgeLens — Model Conversion Studio', icon: app.isPackaged ? path.join(process.resourcesPath, 'icon.ico') : path.join(__dirname, 'icon.ico'), backgroundColor: '#f4f7f9', webPreferences: { nodeIntegration: false, contextIsolation: true, sandbox: true } });
+  mainWindow = new BrowserWindow({ width: 1440, height: 960, minWidth: 900, minHeight: 650, show: false, title: 'EdgeLens — Model Conversion Studio', icon: app.isPackaged ? path.join(process.resourcesPath, 'icon.ico') : path.join(__dirname, 'icon.ico'), backgroundColor: '#f4f7f9', webPreferences: { nodeIntegration: false, contextIsolation: true, sandbox: true, preload: path.join(__dirname, 'preload.cjs') } });
+  ipcMain.handle('edgelens:edge-impulse-sign-in', event => {
+    if (event.sender !== mainWindow.webContents || event.senderFrame !== mainWindow.webContents.mainFrame || new URL(event.senderFrame.url).origin !== origin) throw new Error('Untrusted sign-in request');
+    return shell.openExternal('https://studio.edgeimpulse.com/');
+  });
   mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   mainWindow.webContents.on('will-navigate', (event, url) => { if (new URL(url).origin !== origin) event.preventDefault(); });
   mainWindow.webContents.on('will-attach-webview', event => event.preventDefault());
   Menu.setApplicationMenu(Menu.buildFromTemplate([
-    { label: 'File', submenu: [{ label: 'Reports', click: () => mainWindow.loadURL(`${origin}/#report`) }, { type: 'separator' }, { label: 'Exit', accelerator: 'Alt+F4', click: () => mainWindow.close() }] },
+    { label: 'File', submenu: [{ label: 'Reports', click: () => mainWindow.loadURL(`${origin}/#report`) }, { label: 'Edge Impulse', click: () => mainWindow.loadURL(`${origin}/#impulse`) }, { type: 'separator' }, { label: 'Exit', accelerator: 'Alt+F4', click: () => mainWindow.close() }] },
     { label: 'Edit', submenu: [{ role: 'undo' }, { role: 'redo' }, { type: 'separator' }, { role: 'cut' }, { role: 'copy' }, { role: 'paste' }, { role: 'selectAll' }] },
     { label: 'View', submenu: [{ role: 'resetZoom' }, { role: 'zoomIn' }, { role: 'zoomOut' }, { role: 'togglefullscreen' }] },
     { label: 'Help', submenu: [{ label: 'About EdgeLens', click: () => dialog.showMessageBox(mainWindow, { title: 'EdgeLens', message: `EdgeLens ${app.getVersion()} · Model Conversion Studio`, detail: 'Desktop developer tool • Local Python engine • SQLite experiment reports\nDeployment search uses calibration diagnostics and validation constraints; selection is frozen before test evaluation.\nBenchmarks describe this computer; device results require matching physical reports.\nTFLite conversion requires a Linux worker.' }) }] },
@@ -87,8 +91,9 @@ async function start() {
     const response = await fetch(`${origin}/api/v1/capabilities`, { headers: { 'X-EdgeLens-Session': token } });
     const capabilities = await response.json();
     const page = await mainWindow.webContents.executeJavaScript('({title:document.title,desktop:window.EDGELENS_CONFIG.desktop,heading:document.querySelector("h1").textContent,precisionControls:Boolean(document.querySelector("#run-strategy option[value=quantization_compare]")),validationControl:Boolean(document.querySelector("#validation-select")),deploymentControls:Boolean(document.querySelector("#deployment-controls")),deploymentStrategy:Boolean(document.querySelector("#run-strategy option[value=deployment_search]")),evidenceFilters:Boolean(document.querySelector("#layer-candidate") && document.querySelector("#layer-view") && document.querySelector("#more-layers")),profileTargets:Boolean(document.querySelector("#load-ei-targets") && document.querySelector("#ei-consent"))})');
-    if (!page.desktop || !page.precisionControls || !page.validationControl || !page.deploymentControls || !page.deploymentStrategy || !page.evidenceFilters || !page.profileTargets || !capabilities.deployment_search?.available) throw new Error('Desktop deployment controls or local engine capabilities are missing.');
-    console.log(JSON.stringify({ desktop_smoke: 'passed', capabilities, page }));
+    const integration = await mainWindow.webContents.executeJavaScript('({providerPage:Boolean(document.querySelector("[data-page=impulse]") && document.querySelector("#impulse-page")),browserLogin:typeof window.EdgeLensDesktop?.signInEdgeImpulse === "function",estimateChoice:document.querySelectorAll("input[name=edge-estimate]").length === 2,projectSelector:Boolean(document.querySelector("#test-ei-project") && document.querySelector("#ei-run"))})');
+    if (!page.desktop || !page.precisionControls || !page.validationControl || !page.deploymentControls || !page.deploymentStrategy || !page.evidenceFilters || !page.profileTargets || !capabilities.deployment_search?.available || Object.values(integration).some(value => !value)) throw new Error('Desktop deployment controls, provider connection or local engine capabilities are missing.');
+    console.log(JSON.stringify({ desktop_smoke: 'passed', capabilities, page, integration }));
     shuttingDown = true; app.quit();
   } else mainWindow.show();
 }

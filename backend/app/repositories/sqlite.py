@@ -6,6 +6,9 @@ from datetime import datetime, timezone
 import json
 from pathlib import Path
 import sqlite3
+import os
+import re
+import shutil
 from typing import Any
 from uuid import uuid4
 
@@ -134,6 +137,54 @@ class Repository:
         with self._connection() as connection:
             rows = connection.execute("SELECT * FROM runs ORDER BY created_at DESC, id DESC LIMIT ?", (limit,)).fetchall()
         return [self._decode_run(row) for row in rows]
+
+    def delete_run(self, run_id: str) -> dict:
+        """Delete a finished experiment, cascading report rows and its own files."""
+        if not re.fullmatch(r"run_[a-f0-9]{32}", run_id):
+            raise KeyError(run_id)
+        root = self.data_dir / "runs"
+        directory = root / run_id
+        staged = root / (".deleted_" + run_id + "_" + uuid4().hex)
+        moved = False
+        try:
+            with self._connection() as connection:
+                connection.execute("BEGIN IMMEDIATE")
+                row = connection.execute("SELECT status FROM runs WHERE id=?", (run_id,)).fetchone()
+                if row is None:
+                    raise KeyError(run_id)
+                if row["status"] in {"queued", "running"}:
+                    raise ValueError("A queued or running benchmark cannot be deleted. Wait for it to finish.")
+                if root.exists() and root.resolve() != root:
+                    raise ValueError("Refusing to delete artifacts through a linked runs directory.")
+                if directory.exists() or directory.is_symlink():
+                    if (directory.resolve() != directory or not directory.is_dir()
+                            or directory.is_symlink() or directory.is_junction()):
+                        raise ValueError("Refusing to delete a linked or unexpected artifact directory.")
+                    for parent, dirs, files in os.walk(directory, followlinks=False):
+                        if any((Path(parent) / name).is_symlink() or (Path(parent) / name).is_junction() for name in dirs + files):
+                            raise ValueError("Refusing to delete linked artifacts. No report was deleted.")
+                    directory.rename(staged)
+                    moved = True
+                # The legacy edge_records foreign key intentionally predates
+                # ON DELETE CASCADE; clear it explicitly in this transaction.
+                connection.execute("DELETE FROM edge_records WHERE run_id=?", (run_id,))
+                connection.execute("DELETE FROM runs WHERE id=?", (run_id,))
+        except Exception:
+            if moved:
+                staged.rename(directory)
+            raise
+        cleaned = True
+        if moved:
+            try:
+                # The staged directory was validated above and remains inside
+                # this experiment's data root, never model/dataset storage.
+                if staged.resolve() != staged or not staged.is_relative_to(self.data_dir):
+                    raise OSError("Unexpected cleanup path")
+                shutil.rmtree(staged)
+            except OSError:
+                cleaned = False
+        return {"deleted_run_id": run_id, "artifacts_removed": cleaned,
+                "models_and_datasets_preserved": True}
 
     def update_run(self, run_id: str, status: str, error: Any = None, report: dict | None = None) -> dict:
         if status not in {"queued", "running", "completed", "failed"}:

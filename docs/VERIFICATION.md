@@ -1,5 +1,36 @@
 # Verification — EdgeLens
 
+## 0.8.0 project connections and history deletion — 2 October 2026
+
+- Backend: **76 tests, 75 passed, one optional pretrained download skipped** with
+  `EDGELENS_TEST_CUSTOM=1`. New checks cover scoped project connections,
+  expiration/disconnect, provider failures, malformed-key redaction, exact
+  connected artifact profiling, project provenance, credential-free exports,
+  Yes/No destination validation and transactional report deletion/rollback.
+- Frontend: **17 tests passed**; syntax, assets, native main/preload syntax and
+  build passed. Decision tests require a measured TFLite artifact, reject an
+  ONNX-only estimate and require selection for multiple TFLite artifacts.
+- Browser verification of the embedded desktop renderer uses an isolated local
+  dataset/history. The separate provider page is visible before a run, can open
+  the previous verified live receipt, and Yes is blocked without a connected
+  project/target. A real No-choice TFLite benchmark evaluates the synthetic
+  held-out fixture without submitting a provider job. Normal desktop history
+  is not deleted or changed by these tests.
+- Connections and orchestration were tested locally with mocked provider calls.
+  The earlier live profile below is real; a fresh live key connection and Yes
+  test in this update still need user verification. No browser-account OAuth
+  client is registered or implemented, so automatic all-account project listing
+  is unavailable. Studio sign-in plus explicit project-key access is supported.
+- Native Electron startup remains blocked in this agent's Windows sandbox by
+  IPC permissions. The Windows workflow now verifies preload/browser action,
+  separate section, Yes/No controls and project selectors in source/portable
+  startup. Inspect the workflow for the commit you use; local browser preview
+  does not establish native startup success. No new public portable ZIP is
+  released by this source update. Physical hardware remains UNAVAILABLE.
+
+See [the Edge Impulse walkthrough](EDGE-IMPULSE-CONNECTION.md) and
+[Windows teammate setup](TEAM-SETUP.md).
+
 ## Phase 3 local checkpoint — 2 October 2026, source version 0.7.0
 
 - Full backend suite: 65 tests, 64 passed, one optional download test skipped.

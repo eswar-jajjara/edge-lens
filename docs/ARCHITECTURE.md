@@ -1,4 +1,26 @@
-# Architecture — EdgeLens 0.6
+# Architecture — EdgeLens 0.8
+
+## Provider connection and test intent
+
+The separate Edge Impulse page can connect a project before a run exists.
+`ImpulseConnections` validates keys with the official project-list endpoint and
+holds credentials in memory, scoped to returned project IDs, for at most eight
+hours. Safe session identifiers connect target/job requests to that memory;
+keys and identifiers do not enter SQLite reports. App shutdown/disconnect clears
+credentials. The native sandboxed preload exposes only a fixed Studio-browser
+action; arbitrary external URL opening and Node.js access remain unavailable.
+
+Each run stores a strict Yes/No `edge_estimate` preference and optional project
+destination. The desktop uploads only after a successful evaluation, once per
+freshly created test. History/restart never replay uploads. Multiple artifacts
+require explicit selection; ONNX-only runs retain unavailable TFLite estimates.
+Hash/provenance checks on the server remain authoritative. Browser account OAuth
+is not implemented; a Studio session is never treated as tool authorization.
+
+Finished-test deletion uses a guarded SQLite transaction and validates/stages
+only that run's directory. Edge rows are deleted explicitly for the legacy
+foreign key; normalized report rows cascade. Uploaded model/dataset storage
+remains separate. No schema migration is required; the database stays at 4.
 
 EdgeLens is a desktop developer tool. Electron starts a private loopback Python engine and renders the bundled local interface. A CLI can invoke the same engine without a GUI or HTTP service.
 

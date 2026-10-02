@@ -32,7 +32,7 @@ def report_csv(report):
     row(["EdgeLens experiment report", report.get("run_id")])
     row(["Evidence sections", evidence_sections(report)])
     row(["Diagnostic coverage by candidate", [{k: v for k, v in g.items() if k not in {"measured", "inventory", "unavailable"}} for g in diagnostic_groups(report)]])
-    for key in ("model", "dataset", "datasets", "summary", "environment", "settings", "accuracy_resolution_pp", "search", "diagnostics", "test_data_used_for_selection"):
+    for key in ("model", "dataset", "datasets", "summary", "environment", "settings", "edge_estimate_request", "accuracy_resolution_pp", "search", "diagnostics", "test_data_used_for_selection"):
         row([key, report.get(key)])
     selection = report.get("selection") or {}
     row(["selection", {k: v for k, v in selection.items() if k != "candidates"}])
@@ -112,7 +112,7 @@ def report_html(report):
 {layer_sections}
 <h2>4. Per-image predictions</h2>{table(report.get('predictions', []), PREDICTIONS)}
 <h2>5. ESP32 — {evidence['esp32']['status']}</h2>{table(hardware, HARDWARE)}<p>{text(evidence["esp32"]["reason"]) if not hardware else ""}</p><p>Device-reported Invoke-only samples and output on one fixed image. USB capture and imported JSON retain separate provenance. Neither carries cryptographic hardware attestation. Arena usage is not total RAM; one-image agreement is not dataset accuracy.</p>{pretty(hardware)}
-<h2>6. Edge Impulse — {evidence['edge_impulse']['status']}</h2><p>{text(evidence["edge_impulse"]["verification"])}</p><p>ESTIMATED provider resources and timing are separate from physical measurements. Accuracy is linked only when the uploaded SHA-256 matches an explicitly evaluated held-out artifact. Older unverified records retain UNAVAILABLE accuracy links.</p>{pretty(provider)}
+<h2>6. Edge Impulse — {evidence['edge_impulse']['status']}</h2><h3>Test estimate choice and destination</h3>{pretty(report.get('edge_estimate_request', {'enabled': False, 'note': 'No estimate choice recorded in this older test.'}))}<p>{text(evidence["edge_impulse"]["verification"])}</p><p>A Yes request is not a completed estimate. ESTIMATED provider resources and timing are separate from physical measurements. Accuracy is linked only when the uploaded SHA-256 matches an explicitly evaluated held-out artifact. Older unverified records retain UNAVAILABLE accuracy links.</p>{pretty(provider)}
 <h2>7. Reproduce this experiment</h2><p>Use the identical model and dataset hashes, preprocessing, tolerances, runtime versions and settings. Exported PT2 must come from a trusted source. Download the corresponding artifacts from the saved run.</p>
 {pretty({'model': report.get('model'), 'dataset': report.get('dataset'), 'datasets': report.get('datasets'), 'settings': report.get('settings'), 'environment': report.get('environment'), 'artifacts': report.get('artifacts')})}
 <h3>Metric provenance</h3>{pretty({x.get('profile'): x.get('provenance') for x in report.get('metrics', [])})}

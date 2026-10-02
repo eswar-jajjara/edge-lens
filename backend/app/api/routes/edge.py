@@ -4,7 +4,7 @@ import json
 from typing import Literal
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import Response
-from pydantic import BaseModel, ConfigDict, Field, SecretStr
+from pydantic import BaseModel, ConfigDict, Field, SecretStr, model_validator
 from app.services import hardware, edge_impulse
 from app.services.benchmark import _hash_file
 from app.services.evidence import artifact_evaluation
@@ -23,16 +23,27 @@ class CaptureRequest(BaseModel):
     port: str = Field(min_length=1, max_length=80)
 
 
-class ProfileRequest(BaseModel):
+class ProfileRefresh(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    api_key: SecretStr | None = Field(default=None, min_length=8, max_length=300)
+    connection_id: str | None = Field(default=None, pattern=r"^eic_[a-zA-Z0-9_-]{32}$")
+
+    @model_validator(mode="after")
+    def one_credential(self):
+        if (self.api_key is None) == (self.connection_id is None):
+            raise ValueError("Use one connected project or one API key")
+        return self
+
+
+class ProfileRequest(ProfileRefresh):
     model_config = ConfigDict(extra="forbid")
     artifact_index: int = Field(ge=0)
     project_id: int = Field(ge=1, strict=True)
     device: str = Field(min_length=1, max_length=120, pattern=r"^[a-zA-Z0-9_.+ -]+$")
-    api_key: SecretStr = Field(min_length=8, max_length=300)
     consent_upload: Literal[True]
 
 
-class ProfileRefresh(BaseModel):
+class ConnectionRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     api_key: SecretStr = Field(min_length=8, max_length=300)
 
@@ -41,11 +52,44 @@ class TargetRequest(ProfileRefresh):
     project_id: int = Field(ge=1, strict=True)
 
 
+@router.get("/edge/impulse/connections")
+def connections(request: Request):
+    require_local(request)
+    return {"connections": request.app.state.impulse_connections.list(), "access": "project_key",
+            "browser_login_url": "https://studio.edgeimpulse.com/", "account_oauth_available": False}
+
+
+@router.post("/edge/impulse/connections", status_code=201)
+def connect_project(payload: ConnectionRequest, request: Request):
+    require_local(request)
+    try:
+        return request.app.state.impulse_connections.connect(payload.api_key.get_secret_value())
+    except ValueError as exc:
+        raise HTTPException(502, str(exc)) from exc
+
+
+@router.delete("/edge/impulse/connections/{connection_id}", status_code=204)
+def disconnect_project(connection_id: str, request: Request):
+    require_local(request)
+    request.app.state.impulse_connections.disconnect(connection_id)
+    return Response(status_code=204)
+
+
+def credential(request, payload, project_id):
+    if payload.connection_id:
+        try:
+            return request.app.state.impulse_connections.credential(payload.connection_id, project_id)
+        except ValueError as exc:
+            raise HTTPException(409, str(exc)) from exc
+    return payload.api_key.get_secret_value(), None
+
+
 @router.post("/edge/impulse/targets")
 def profile_targets(payload: TargetRequest, request: Request):
     require_local(request)
+    key, _ = credential(request, payload, payload.project_id)
     try:
-        return edge_impulse.list_targets(payload.project_id, payload.api_key.get_secret_value())
+        return edge_impulse.list_targets(payload.project_id, key)
     except ValueError as exc:
         raise HTTPException(502, str(exc)) from exc
 
@@ -161,11 +205,12 @@ def submit_profile(run_id: str, payload: ProfileRequest, request: Request):
     evaluation = artifact_evaluation(run["report"], artifact)
     if evaluation["status"] != "MEASURED":
         raise HTTPException(409, evaluation["reason"])
+    key, project_name = credential(request, payload, payload.project_id)
     try:
-        job_id = edge_impulse.start_profile(path, payload.project_id, payload.device, payload.api_key.get_secret_value(), expected_sha256=artifact["sha256"])
+        job_id = edge_impulse.start_profile(path, payload.project_id, payload.device, key, expected_sha256=artifact["sha256"])
     except ValueError as exc:
         raise HTTPException(502, str(exc)) from exc
-    return request.app.state.repository.save_edge_record(run_id, "edge_impulse_job", {"project_id": payload.project_id, "job_id": job_id, "device": payload.device,
+    return request.app.state.repository.save_edge_record(run_id, "edge_impulse_job", {"project_id": payload.project_id, "project_name": project_name, "connection_access": "project_key", "job_id": job_id, "device": payload.device,
                   "artifact_index": payload.artifact_index, "profile": artifact["profile"], "model_sha256": artifact["sha256"],
                   "evaluated_artifact": evaluation, "source": "edge_impulse", "measurement_scope": "provider_analysis",
                   "evidence_status": "ESTIMATED", "provider_url": edge_impulse.BASE + f"/{payload.project_id}/jobs/profile-tflite"})
@@ -179,13 +224,15 @@ def refresh_profile(record_id: str, payload: ProfileRefresh, request: Request):
     artifact, _ = artifact_path(request, run, job["artifact_index"])
     if artifact["sha256"] != job["model_sha256"]:
         raise HTTPException(409, "Profile job artifact hash does not match this run")
+    key, _ = credential(request, payload, job["project_id"])
     try:
-        result = edge_impulse.profile_result(job["project_id"], job["job_id"], payload.api_key.get_secret_value())
+        result = edge_impulse.profile_result(job["project_id"], job["job_id"], key)
     except ValueError as exc:
         raise HTTPException(502, str(exc)) from exc
-    result = edge_impulse.redact_response(result, payload.api_key.get_secret_value())
+    result = edge_impulse.redact_response(result, key)
     result_record = {k: job[k] for k in ("project_id", "job_id", "device", "artifact_index", "profile", "model_sha256")}
     result_record.update(evaluated_artifact=job.get("evaluated_artifact"), evidence_status="ESTIMATED",
+                         project_name=job.get("project_name"), connection_access=job.get("connection_access", "project_key"),
                          provider_url=edge_impulse.BASE + f"/{job['project_id']}/jobs/profile-tflite/{job['job_id']}/result",
                          raw_response=result,
                          response_sha256=hashlib.sha256(json.dumps(result, sort_keys=True, allow_nan=False).encode()).hexdigest(),

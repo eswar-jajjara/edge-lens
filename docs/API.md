@@ -1,4 +1,36 @@
-# Local API — version 0.7
+# Local API — version 0.8
+
+## Session connections, per-test estimates and history deletion
+
+Desktop requests still require the private local session and same-origin writes.
+Connection/deletion routes are enabled in the local developer workspace only.
+Validation failures omit submitted values, including malformed credentials.
+
+| Route | Behavior |
+|---|---|
+| GET `/edge/impulse/connections` | Safe connection/project IDs and names; no credentials |
+| POST `/edge/impulse/connections` | `{api_key}`; verify project access and hold key in memory for up to eight hours |
+| DELETE `/edge/impulse/connections/{id}` | Remove credential from memory; 204 |
+| DELETE `/runs/{run_id}` | Delete one finished local test and generated artifacts; preserve uploaded inputs; active runs return 409 |
+
+Target loading, profile submission and refresh accept either `connection_id` or
+the legacy transient `api_key`, never both. A connection can access only projects
+returned by Studio for that key. Account-wide OAuth is not implemented in 0.8.
+
+`POST /runs` accepts `edge_estimate:{enabled:false}` (default), or
+`edge_estimate:{enabled:true,project_id:1126810,project_name:"My project",device:"espressif-esp32"}`.
+Yes requires a project and target; No must not include a destination. Credentials
+and connection IDs are rejected from this persisted preference. Reports expose
+it as `edge_estimate_request`. The desktop orchestrates the authorized upload
+after evaluation. Creating a run through the API/CLI alone never uploads, and
+opening saved history never automatically resubmits.
+
+Deletion returns `deleted_run_id`, `artifacts_removed` and
+`models_and_datasets_preserved`. Report rows and legacy edge records are removed
+transactionally. A validated run-specific directory is staged first and restored
+if the transaction fails; linked paths are rejected. Locked final cleanup may
+leave a local `.deleted_` directory while history deletion succeeds. Remote
+Studio jobs and previously exported files are unaffected.
 
 Base: `/api/v1`. The desktop engine binds a random loopback port and requires its private session cookie/header. Use the CLI for ordinary scripting without needing desktop session credentials. The standalone development server binds `127.0.0.1:8000`.
 

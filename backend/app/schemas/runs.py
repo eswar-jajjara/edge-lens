@@ -41,6 +41,22 @@ class DeploymentConstraints(BaseModel):
     max_host_latency_ms: float | None = Field(default=None, gt=0, le=60000)
 
 
+class EdgeEstimateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    enabled: bool = Field(default=False, strict=True)
+    project_id: int | None = Field(default=None, ge=1, strict=True)
+    project_name: str | None = Field(default=None, min_length=1, max_length=200)
+    device: str | None = Field(default=None, min_length=1, max_length=120, pattern=r"^[a-zA-Z0-9_.+ -]+$")
+
+    @model_validator(mode="after")
+    def destination(self):
+        if self.enabled and (self.project_id is None or self.device is None):
+            raise ValueError("Select an Edge Impulse project and target for a Yes estimate choice")
+        if not self.enabled and any(v is not None for v in (self.project_id, self.project_name, self.device)):
+            raise ValueError("A No estimate choice must not contain an upload destination")
+        return self
+
+
 class CreateRunRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     model_id: Annotated[str, Field(min_length=1, max_length=80, pattern=r"^[a-zA-Z0-9_-]+$")]
@@ -54,6 +70,7 @@ class CreateRunRequest(BaseModel):
     target: Literal["raspberry_pi", "esp32"]
     dataset_id: Annotated[str, Field(min_length=1, max_length=80, pattern=r"^[a-zA-Z0-9_-]+$")]
     settings: RunSettings = Field(default_factory=RunSettings)
+    edge_estimate: EdgeEstimateRequest = Field(default_factory=EdgeEstimateRequest)
 
     @model_validator(mode="after")
     def check_experiment(self):

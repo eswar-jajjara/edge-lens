@@ -92,6 +92,20 @@ def get_run(run_id: str, request: Request):
     return public_run(required_run(request, run_id))
 
 
+@router.delete("/runs/{run_id}")
+def delete_run(run_id: str, request: Request):
+    if not request.app.state.config.allow_custom_models:
+        raise HTTPException(403, "History deletion is enabled in the local developer workspace only")
+    try:
+        return request.app.state.repository.delete_run(run_id)
+    except KeyError as exc:
+        raise HTTPException(404, "Run not found.") from exc
+    except ValueError as exc:
+        raise HTTPException(409, str(exc)) from exc
+    except OSError as exc:
+        raise HTTPException(409, "Could not remove this test's files. Close open artifact files and try again.") from exc
+
+
 @router.get("/runs/{run_id}/report")
 def get_report(run_id: str, request: Request):
     return required_report(request, run_id)
