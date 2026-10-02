@@ -17,6 +17,7 @@ from app.services.worker_bundle import import_bundle
 def bundle(tamper=False, extra=False):
     content = b'test evaluated artifact'; digest = hashlib.sha256(content).hexdigest()
     report = {'source': 'measured', 'run_id': 'worker_original', 'model': {'name': 'Test worker'},
+              'environment': {'platform': 'Linux-test'},
               'dataset': {'id': 'worker_dataset', 'name': 'Synthetic test', 'sha256': 'dataset_hash', 'image_count': 2},
               'metrics': [{'profile': 'dashboard', 'accuracy_pct': 50., 'artifact_sha256': digest,
                            'dataset_sha256': 'dataset_hash', 'sample_count': 2, 'evaluation_split': 'test'}],

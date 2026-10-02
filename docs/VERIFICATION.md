@@ -1,5 +1,54 @@
 # Verification — EdgeLens
 
+## Review-II objective work — source version 0.9.0
+
+- **MEASURED:** seven synthetic known-fault/control cases pass, including a
+  rewired edge, altered weights/operator, invalid shape, missing operator and
+  preprocessing drift. The native-tool Diagnostics action saves results in
+  SQLite and supports HTML/CSV/JSON exports. First observed divergence is not
+  causal proof. Existing uploaded models are never modified.
+- **MEASURED:** a fresh Windows tiny-classifier PT2/ONNX experiment uses 300
+  synthetic held-out images, 10 warm-ups, 100 timed invocations and 16 shared
+  inputs. Both candidate graphs have 5/5 supported structural boundaries and
+  the unoptimized diagnostic profile has all five numerical boundaries plus
+  final output. Other models may have unavailable mappings. Input renaming and
+  the declared pooling/flattening decomposition rules are covered by tests.
+- **MEASURED:** Linux workflow 37006609016 converted and evaluated actual PT2,
+  FP32 TFLite and calibrated static INT8 TFLite on the same 300 synthetic images,
+  with 100 separate calibration images. Accuracy was 100% for each; this is
+  plumbing evidence, not real-world model quality or converter superiority.
+  FP32/INT8 artifacts were 3,376 / 4,040 bytes; maximum output differences versus
+  PyTorch were 0.0000019073486328125 / 0.06374835968017578. INT8 contains seven
+  INT8 tensors with calibrated integer weights and activations, while float
+  tensors/I/O remain. Neither fully-integer firmware nor MCU compatibility is
+  established. The configured 2 MiB limit is a model-file workflow budget.
+- **MEASURED:** torch 2.9.1+cpu / torchvision 0.24.1+cpu / torchao 0.17.0+cpu /
+  litert-torch 0.9.4 / LiteRT 2.2.0 work together on Linux x64 Python 3.11. The
+  complete dependency snapshot is pinned. An earlier torch 2.13 trial failed on
+  an ATen overload and is not the supported stack. Local WSL access was denied
+  and Docker's Linux daemon was absent: **UNAVAILABLE locally**.
+- **MEASURED:** reports retain min/max, quartiles, median, p95, SD and raw timing
+  samples/input indices. Process RSS is sampled in a separate inference pass;
+  it includes all loaded models/runtime/dataset state and is not guaranteed peak
+  or model-only RAM. CPU, threads and active Windows power plan are recorded;
+  unavailable power metadata is labelled. No tiny-difference significance claim.
+- Worker bundles verify artifact hashes, sizes and held-out evaluation links
+  before entering SQLite. Unexpected paths and changed bytes are rejected;
+  import never executes PT2. Measurements retain worker origin rather than
+  being presented as re-measured on the laptop. Trusted-worker measurement
+  claims are not cryptographically attested.
+- **ESTIMATED:** the existing live Edge Impulse job 54379928 was rechecked against
+  its original evaluated TFLite hash and sanitized-response hash. It is not
+  reassigned to the new converted model. A **new live profile is UNAVAILABLE**
+  until the user connects their project key in the tool. Existing hash guards,
+  consent, redaction and provenance tests remain in place. Actual ESP32 results
+  remain **UNAVAILABLE**.
+- Local backend checks: **86 total, 85 passed, one optional pretrained-download
+  smoke skipped**, with full custom-model execution enabled. Frontend checks:
+  **17 passed**, syntax/assets/build passed. Final GitHub/Windows packaging
+  checks are recorded separately in the delivery result.
+
+
 ## 0.8.0 project connections and history deletion — 2 October 2026
 
 - Backend: **76 tests, 75 passed, one optional pretrained download skipped** with

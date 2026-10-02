@@ -20,6 +20,11 @@ def export_bundle(report_path, output):
             name = 'artifacts/' + str(index) + '.' + extension
             # CLI exports omit local paths. The reference uses the reference profile.
             source = report_path.parent / (artifact['profile'] + '.' + extension)
+            if not source.is_file():
+                candidates = [p for p in report_path.parent.glob('*.' + extension) if p.is_file() and p.stat().st_size == artifact['size_bytes']
+                              and hashlib.sha256(p.read_bytes()).hexdigest() == artifact['sha256']]
+                if not candidates: raise ValueError('Evaluated artifact is missing from the worker directory')
+                source = candidates[0]
             content = source.read_bytes()
             if hashlib.sha256(content).hexdigest() != artifact['sha256']: raise ValueError('Artifact changed after evaluation')
             archive.writestr(name, content); manifest.append({'index': index, 'file': name})
@@ -57,7 +62,9 @@ def import_bundle(content, repository):
         if artifact['format'] in {'onnx', 'tflite'} and artifact_evaluation(report, artifact)['status'] != 'MEASURED':
             raise ValueError('Converted artifact lacks a matching complete held-out evaluation')
     original_run = report.get('run_id')
-    request = {'model_id': 'worker_import', 'format': 'tflite', 'target': 'esp32',
+    converted_formats = {a['format'] for a in artifacts if a['format'] in {'onnx', 'tflite'}}
+    if len(converted_formats) != 1: raise ValueError('Expected one converted model format in the worker report')
+    request = {'model_id': 'worker_import', 'format': next(iter(converted_formats)), 'target': report.get('target', {}).get('id', 'esp32'),
                'dataset_id': report.get('dataset', {}).get('id'), 'settings': report.get('settings', {}),
                'strategy': 'fixed_profiles', 'edge_estimate': {'enabled': False}}
     run = repository.create_run(request)
@@ -67,7 +74,8 @@ def import_bundle(content, repository):
             path = directory / Path(name).name; path.write_bytes(raw)
             artifacts[index]['path'] = str(path); artifacts[index].pop('download_url', None)
         report.update(run_id=run['id'], edge_results=[], edge_estimate_request={'enabled': False})
-        report['environment'] = {**report.get('environment', {}), 'execution_origin': 'imported_linux_worker',
+        origin = 'imported_linux_worker' if report.get('environment', {}).get('platform', '').startswith('Linux') else 'imported_worker'
+        report['environment'] = {**report.get('environment', {}), 'execution_origin': origin,
                                  'import_provenance': {'bundle_sha256': hashlib.sha256(content).hexdigest(), 'original_run_id': original_run,
                                     'verification': 'Artifact bytes and held-out metric identities checked; external measurement claims are supplied by the trusted worker, not re-measured on this laptop.'}}
         repository.update_run(run['id'], 'completed', report=report)

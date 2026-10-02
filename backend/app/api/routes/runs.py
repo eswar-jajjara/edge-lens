@@ -28,7 +28,9 @@ def diagnostic_self_test(request: Request):
         report = {'schema_version': 5, 'source': 'measured', 'run_id': run['id'], 'created_at': run['created_at'],
                   'model': {'name': 'Controlled diagnostic self-test · synthetic classifier'},
                   'summary': {'conclusion': f"{sum(c['passed'] for c in faults['cases'])}/{len(faults['cases'])} known-fault/control checks passed."},
-                  'fault_validation': faults, 'metrics': [], 'predictions': [], 'structural': [],
+                  'fault_validation': faults, 'metrics': [], 'predictions': [],
+                  'structural': [{'profile': case['fault'], 'comparison': case['structural'], 'comparison_status': 'MEASURED',
+                                  'reason': 'Known synthetic fault/control against the unchanged reference.'} for case in faults['cases'] if case.get('structural')],
                   'layers': [dict(row, profile=case['fault'], reason_code='controlled_fault_capture', first_observed_divergence=row['name'] == case['first_observed_divergence'])
                              for case in faults['cases'] for row in case.get('numerical', [])],
                   'artifacts': [_artifact(p.stem, p.suffix.removeprefix('.'), p) for p in directory.iterdir() if p.suffix in {'.onnx', '.json'}],

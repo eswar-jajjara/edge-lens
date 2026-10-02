@@ -67,7 +67,10 @@ def run_fault_suite(directory):
                 name = node.output[0]; ref, out = expected[name], actual[name]
                 difference = np.abs(out.astype(np.float64) - ref)
                 drift = not np.allclose(out, ref, atol=1e-4, rtol=1e-3)
-                numerical.append({'name': node.name, 'status': 'drift' if drift else 'pass', 'mae': float(difference.mean()), 'max_abs': float(difference.max())})
+                numerical.append({'name': node.name, 'operation': node.op_type, 'status': 'drift' if drift else 'pass',
+                                  'mae': float(difference.mean()), 'max_abs': float(difference.max()),
+                                  'expected_shape': list(ref.shape), 'actual_shape': list(out.shape), 'sample_count': 1,
+                                  'scope': 'synthetic_fault_boundary', 'detail': 'Same seeded synthetic input; known fault/control compared in unoptimized ONNX Runtime. No dataset-accuracy claim.'})
                 if drift and row['first_observed_divergence'] is None: row['first_observed_divergence'] = node.name
             row['numerical'] = numerical
             row['passed'] = row['first_observed_divergence'] is None if fault == 'unchanged_control' else row['first_observed_divergence'] is not None
