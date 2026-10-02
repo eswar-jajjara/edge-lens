@@ -1,8 +1,8 @@
 # Phase 3 — evidence-linked edge profiling
 
 Phase 3 is in progress. Source version 0.7.0 supplies the local profiling and
-reporting checkpoint; completing the live experiment needs an Edge Impulse
-project, a transient key, explicit model-upload consent and a provider response.
+reporting checkpoint. The first small TFLite experiment now has a successful
+live Edge Impulse response with a verified link to its held-out evaluation.
 There are no new physical ESP32 measurements or published portable binaries.
 
 ## Responsibilities and evidence
@@ -49,7 +49,9 @@ replace them with invented fit or timing values.
 ## First small live experiment
 
 1. Create a private project in [Edge Impulse Studio](https://studio.edgeimpulse.com/).
-2. Find its project ID and API key under Dashboard / Keys. Enter the key only
+2. Find its project ID and project API key under Dashboard / Keys. Use the
+   **API Keys** section and a key permitted to start profiling jobs; an HMAC key
+   is a separate credential. Enter the key only
    into EdgeLens's Project API key field; never commit it or send it in chat.
 3. Evaluate a small TFLite classifier in EdgeLens using its true input shape,
    layout, scale, normalization and labelled held-out images. Input dimensions
@@ -82,8 +84,38 @@ and stretch resize. `spec.json` contains these settings. The file is a
 hand-authored, 6,912-byte INT8 fully connected dark/light classifier, with 300
 deterministic synthetic images. Its accuracy checks plumbing only. It is not a
 trained vision model, a PyTorch conversion result, or evidence of superiority.
-Fit and latency on an MCU remain unverified until provider/device results exist.
+Provider estimates for the first run are recorded below. Actual timing and
+memory on a physical MCU remain unverified.
 Generated binaries/images are ignored by Git.
+
+### Live result — 2 October 2026
+
+The same 6,912-byte fixture was profiled for **Espressif ESP-EYE (ESP32 240MHz)**,
+provider target `espressif-esp32`. The successful response reported INT8,
+`isSupportedOnMcu: true`, `hasPerformance: true` and **1 ms estimated inference
+time**. It returned the following resource estimates:
+
+| Provider build | RAM (bytes) | ROM (bytes) | Arena (bytes) |
+| --- | ---: | ---: | ---: |
+| TFLite | 5,883 | 31,032 | 5,747 |
+| EON | 3,912 | 15,656 | 3,168 |
+| TFLite, CMSIS-NN disabled | 5,825 | 26,456 | 5,689 |
+| EON, CMSIS-NN disabled | 3,880 | 15,032 | 3,136 |
+
+These are the provider's fields, not measured total board memory. The response
+contains one inference-time value; no separate timing per build is inferred.
+Model SHA-256:
+`6c6f1735e0fd930a79b05556c3d7afa7a594dd760761390ea29a5d89c9dbc407`.
+The held-out snapshot matches that artifact, 300 synthetic images, dataset hash,
+labels and preprocessing. Its report accuracy link is **VERIFIED**; its resource
+section is **ESTIMATED** and its physical ESP32 section remains **UNAVAILABLE**.
+The sanitized raw response, response checksum and dated receipt are stored in
+the local SQLite workspace and exported report, without credentials.
+
+This verifies a live integration for one small imported TFLite model. It does
+not verify PyTorch-to-TFLite conversion, provider acceptance of QDQ ONNX, firmware
+prediction equivalence, generic ESP32 DevKit fit, or improved classification
+accuracy. EON/TFLite resource differences are provider build differences.
 
 ## Layer diagnostics
 
@@ -104,7 +136,7 @@ held-out dataset. Controlled validation exclusions remain separate evidence.
 
 ## Remaining experiments, in order
 
-1. **Live TFLite profile:** pending until an actual provider response is saved.
+1. **Live TFLite profile:** completed for the small synthetic fixture above.
 2. **ONNX QDQ probe:** Edge Impulse BYOM accepts ONNX, but the current EdgeLens
    profile adapter is TFLite-only. Test one QDQ file in Studio before expanding
    the adapter. Record its original hash, target, date and provider outcome.

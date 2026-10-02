@@ -13,8 +13,8 @@
   synthetic labelled images using the actual LiteRT interpreter and CLI. Its
   labelled accuracy was 100% in this plumbing test. SHA-256:
   `6c6f1735e0fd930a79b05556c3d7afa7a594dd760761390ea29a5d89c9dbc407`.
-  This is not a PyTorch conversion result, trained model quality claim or hardware
-  fit/performance evidence. The saved metric hash matches the evaluated bytes.
+  This is not a PyTorch conversion result, trained model quality claim or a
+  physical hardware measurement. The saved metric hash matches the evaluated bytes.
 - A read-only rendering of the previous MobileNetV2 report shows the diagnosed
   candidate's 53/53 eligible operations on three calibration images. The UI
   candidate filter shows exactly those 53 comparisons; inventory shows 100 of
@@ -24,10 +24,21 @@
 - SQLite remains schema 4; saved metric/evaluation fields and provider receipts
   are additive JSON. Old history remains readable, with unavailable provider
   accuracy links unless explicit evaluated-artifact provenance exists.
-- Live Edge Impulse API profiling remains pending. Project creation and visible
-  ESP-EYE target availability do not count as a completed profile. A QDQ ONNX
-  provider probe, validated Linux TFLite INT8 conversion and physical ESP32
-  benchmarking remain pending; see [Phase 3 scope](EDGE-PROFILING.md).
+- One live Edge Impulse TFLite job completed for ESP-EYE (ESP32 240MHz), with
+  `success:true`, INT8, the matching 6,912-byte model, supported-on-MCU status and
+  1 ms estimated inference time. Its sanitized raw response and checksum are
+  saved in SQLite. Exported HTML/CSV/JSON retain the receipt and a VERIFIED
+  300-image evaluation link. The saved model bytes and response checksum were
+  independently rechecked. Provider memory details and limits appear in
+  [the live result](EDGE-PROFILING.md#live-result--2-october-2026).
+- Both [project validation](https://github.com/eswar-jajjara/edge-lens/actions/runs/36988341916)
+  and [Windows teammate setup](https://github.com/eswar-jajjara/edge-lens/actions/runs/36988341891)
+  passed for the Phase 3 source checkpoint. Windows CI includes native startup
+  and the relocated portable runtime. An interactive launch from the local
+  agent sandbox hit a Windows IPC access-denied error; that launch is not
+  counted as successful desktop verification.
+- A QDQ ONNX provider probe, validated Linux TFLite INT8 conversion and physical
+  ESP32 benchmarking remain pending; see [Phase 3 scope](EDGE-PROFILING.md).
 
 ## Phase 2 — 2 October 2026, source version 0.6.0
 
