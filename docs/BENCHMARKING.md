@@ -1,4 +1,4 @@
-# Benchmark methodology — version 0.6
+# Benchmark methodology — version 0.9.0
 
 Developer classifiers use the exact uploaded export, declared image preprocessing and model class order. Common torchvision presets remain optional. A PT2 source supplies a PyTorch reference. ONNX/TFLite-only uploads support standalone inference metrics; missing reference comparisons are null.
 
@@ -21,7 +21,7 @@ inference. Final test results are never used to retune that run.
 
 - Top-1 accuracy = correct predictions / labelled images. Delta is in percentage points. Agreement compares argmax with the PyTorch reference, not true labels.
 - Numerical differences compare raw class-score vectors without adding a softmax. Tolerance uses `abs(candidate - reference) <= atol + rtol * abs(reference)` as implemented by NumPy's comparison call.
-- CPU timing warms each profile, rotates profile order between rounds and records raw values, median and p95. One fixed preprocessed image is used. Loading, preprocessing, conversion and diagnostic extraction are outside the timing loop; runtime calls/output copy/signature checks are included for uploaded classifiers.
+- CPU timing warms each profile, rotates profile order between rounds and records raw values, median and p95. Version 0.9.0 developer runs cycle up to 16 shared preprocessed images; earlier runs retain their original single-image method. Loading, preprocessing, conversion and diagnostic extraction are outside the timing loop; runtime calls/output copy/signature checks are included for uploaded classifiers.
 - All profiles use configured CPU thread counts, CPU execution and the same test images. Concurrent external workloads and OS scheduling can affect results. Independent repetitions are needed for tiny timing claims.
 - One changed label prediction shifts accuracy by `100/N` percentage points. Current archive limit is 1,000 images, subject to a 512 MiB preprocessing budget; a 0.001 pp accuracy step is outside this prototype's resolution.
 - Serialized model bytes are not peak process RAM. No host peak-memory or energy claim is made.
@@ -41,3 +41,17 @@ One-image board output can be compared with the host TFLite result. It does not 
 Edge Impulse profiling is optional and asynchronous. Its resource/timing analysis is shown as provider analysis, never as a measurement of the user's connected ESP32. No fake hardware latency is produced when a board or provider is unavailable.
 
 TFLite conversion remains an optional Linux LiteRT Torch path with identical FP32 controls, not a distinct optimized TFLite converter. Imported FP32/int8 TFLite inference works in the current Windows engine. Static ONNX calibration and selective quantization search are implemented; quantization-aware training and Raspberry Pi hardware execution remain future work.
+
+
+## Version 0.9.0 host measurements
+
+New developer runs default to 10 warm-ups and 100 measurements, cycling up to 16
+shared preprocessed inputs. Raw samples/indices, min/max, quartiles, p95 and SD
+are retained. Older saved reports keep their original method and sample counts.
+Independent repeated runs are needed before interpreting small differences.
+CPU model, threads and Windows power plan are recorded; inaccessible metadata
+remains unavailable. RSS is sampled separately from timing over 30 additional
+inferences, every 10 ms and after each call. It includes all loaded models,
+datasets and engine/runtime state and is not guaranteed true peak/model-only RAM.
+See [Stages 1–5](STAGES-1-5.md) for the measured-worker import and exact-artifact
+provider evidence requirements.

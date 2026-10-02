@@ -1,4 +1,4 @@
-# EdgeLens — Deployment Validation Tool 0.8.0
+# EdgeLens — Deployment Validation Tool 0.9.0
 
 A Windows desktop developer tool for validating image-classifier conversion and investigating edge readiness with separately labelled provider estimates. Electron starts a private local Python engine automatically; SQLite stores models, datasets, metrics, layer findings and reports. Model binaries stay on disk with SHA256 metadata in SQLite.
 
@@ -34,7 +34,7 @@ The older [Windows x64 portable ZIP v0.4.1](https://github.com/eswar-jajjara/edg
 - Delete a completed or failed test's local report history and generated artifacts after confirmation. Original uploaded models and datasets stay; active benchmarks cannot be deleted.
 - Export complete HTML/CSV/JSON reports. Use `backend/cli.py` for a headless software-tool workflow.
 
-TFLite **inference** works in this Windows engine, including per-tensor int8 inputs/outputs. PT2-to-TFLite **conversion** requires the optional Linux LiteRT Torch stack and is not runtime-verified here. Raspberry Pi remains a deployment goal; its hardware runner is future work. No universal converter superiority, exact simulated device timing, peak RAM or energy claim is made.
+TFLite **inference** works in this Windows engine, including per-tensor int8 inputs/outputs. PT2-to-TFLite **conversion** is verified for the tiny classifier on the pinned Linux worker; local Windows/WSL conversion is not verified. Import its checked worker report into the desktop tool. See [Stages 1–5](docs/STAGES-1-5.md) for the exact stack and limitations. Raspberry Pi remains a deployment goal; its hardware runner is future work. Reports include sampled whole-process RSS; this is not model-only RAM or a guaranteed true peak. No universal converter superiority, exact simulated device timing or energy claim is made.
 
 ## Develop
 
@@ -61,13 +61,13 @@ npm run desktop:package
 
 The custom integration suite runs tiny real PT2/ONNX, static INT8 QDQ, and FP32/int8 TFLite classifiers using synthetic fixtures. It verifies behavior, not project accuracy. The optional full pretrained MobileNetV2 smoke test uses `EDGELENS_ML_SMOKE=1` and may download official weights.
 
-Packaging copies Python sources because the exporter inspects them. This is an unsigned portable development build, not a signed installer. The [Windows CI workflow](https://github.com/eswar-jajjara/edge-lens/actions/workflows/windows-desktop.yml) checks fresh setup, native desktop startup and a relocated portable runtime for each source commit; see [verification](docs/VERIFICATION.md) for executed results. Use the setup/runtime check on each teammate's laptop. Version 0.8.0 is a source update; no new public portable ZIP is included.
+Packaging copies Python sources because the exporter inspects them. This is an unsigned portable development build, not a signed installer. The [Windows CI workflow](https://github.com/eswar-jajjara/edge-lens/actions/workflows/windows-desktop.yml) checks fresh setup, native desktop startup and a relocated portable runtime for each source commit; see [verification](docs/VERIFICATION.md) for executed results. Use the setup/runtime check on each teammate's laptop. Version 0.9.0 is a source update; no new public portable ZIP is included.
 
 See [architecture and frameworks](docs/ARCHITECTURE.md), [methodology](docs/BENCHMARKING.md), [API](docs/API.md) and [deployment](docs/DEPLOYMENT.md).
 
-## Phase 3 checkpoint
+## Earlier Phase 3 checkpoint (0.7.0)
 
-See [edge profiling and evidence](docs/EDGE-PROFILING.md) for exact artifact matching, target discovery, candidate-scoped diagnostics and the small 32x32 profiling fixture. The first live TFLite profile succeeded for the ESP-EYE target, with a saved provider response and a VERIFIED link to the same evaluated model bytes. Reports separate host MEASURED, provider ESTIMATED and ESP32 UNAVAILABLE. This synthetic fixture verifies the integration; it is not conversion-superiority evidence. A QDQ ONNX probe and validated Linux TFLite INT8 conversion remain pending. Existing saved history remains on SQLite schema 4.
+See [edge profiling and evidence](docs/EDGE-PROFILING.md) for exact artifact matching, target discovery, candidate-scoped diagnostics and the small 32x32 profiling fixture. The first live TFLite profile succeeded for the ESP-EYE target, with a saved provider response and a VERIFIED link to the same evaluated model bytes. Reports separate host MEASURED, provider ESTIMATED and ESP32 UNAVAILABLE. This synthetic fixture verifies the integration; it is not conversion-superiority evidence. At that checkpoint, a QDQ ONNX probe and validated Linux TFLite INT8 conversion were pending. The Linux conversion has since been verified in 0.9.0; the QDQ provider probe remains pending. Existing saved history remains on SQLite schema 4.
 
 
 ## Review-II objective completion · version 0.9.0

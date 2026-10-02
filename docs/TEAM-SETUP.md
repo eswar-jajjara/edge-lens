@@ -1,4 +1,4 @@
-# Set up EdgeLens 0.8.0 on a Windows teammate’s laptop
+# Set up EdgeLens 0.9.0 on a Windows teammate’s laptop
 
 EdgeLens is a desktop developer tool. It runs a private Python conversion and
 benchmark engine on your laptop, shows layer diagnostics, and stores experiments
@@ -133,3 +133,14 @@ make an old build run. `start-desktop.cmd` starts current source even if an old
 `release\win-unpacked\EdgeLens.exe` is present. Developers can create a current
 portable folder with `npm run desktop:package`; no new public ZIP accompanies
 this source update.
+
+
+## New diagnostic and Linux-worker features
+
+Version 0.9.0 adds **Layer diagnostics → Run seven checks**, structural graph
+evidence, 100-sample timing defaults and sampled process RSS. TFLite conversion
+uses a separate verified Linux worker; Windows runs evaluated TFLite files and
+imports worker reports through **Reports & history**. Follow
+[Stages 1–5](STAGES-1-5.md). Your teammate can reproduce the synthetic Linux test
+with the GitHub workflow without uploading private models. Local WSL setup still
+requires verification on their laptop. Physical ESP32 results remain unavailable.
