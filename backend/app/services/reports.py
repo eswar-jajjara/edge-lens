@@ -32,7 +32,7 @@ def report_csv(report):
     row(["EdgeLens experiment report", report.get("run_id")])
     row(["Evidence sections", evidence_sections(report)])
     row(["Diagnostic coverage by candidate", [{k: v for k, v in g.items() if k not in {"measured", "inventory", "unavailable"}} for g in diagnostic_groups(report)]])
-    for key in ("model", "dataset", "datasets", "summary", "environment", "settings", "edge_estimate_request", "accuracy_resolution_pp", "search", "diagnostics", "structural", "conversion_candidates", "calibration", "test_data_used_for_selection"):
+    for key in ("model", "dataset", "datasets", "summary", "environment", "settings", "edge_estimate_request", "accuracy_resolution_pp", "search", "diagnostics", "structural", "fault_validation", "conversion_candidates", "calibration", "test_data_used_for_selection"):
         row([key, report.get(key)])
     selection = report.get("selection") or {}
     row(["selection", {k: v for k, v in selection.items() if k != "candidates"}])
@@ -110,6 +110,7 @@ def report_html(report):
 {selection_section}
 <h2>3. Layer diagnostics</h2><p>{compared} numerical comparisons recorded across candidates; {len(drifts)} require review. Inventory and unavailable captures are shown separately below. Counts across candidates are repeated graph entries, not unique model layers. An observed difference at a boundary is evidence, not proof of its root cause.</p>
 {layer_sections}
+<h3>Controlled fault validation</h3>{table((report.get('fault_validation') or {}).get('cases', []), ['fault', 'expected', 'first_observed_divergence', 'passed', 'error'])}<p>{text((report.get('fault_validation') or {}).get('limitation'))}</p>
 <h3>Structural graph comparison · separate from numerical fidelity</h3><p>MEASURED inventories list operators, tensor shapes and connections. MATCHED means only the declared boundary checks matched; it is not a numerical pass. CHANGED can be a legal converter optimization. UNAVAILABLE mappings remain explicit.</p>
 {''.join('<h4>' + text(s.get('profile')) + '</h4>' + table((s.get('comparison') or {}).get('rows', []), ['name', 'operation', 'status', 'reason_code', 'changes', 'expected_shape', 'actual_shape', 'expected_parents', 'actual_parents']) + '<details><summary>Graph inventory and mapping evidence</summary>' + pretty(s) + '</details>' for s in report.get('structural', []))}
 <h2>4. Per-image predictions</h2>{table(report.get('predictions', []), PREDICTIONS)}

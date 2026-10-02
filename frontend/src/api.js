@@ -24,6 +24,7 @@
     runs: () => request('/runs'), run: id => request(runPath(id)), report: id => request(`${runPath(id)}/report`),
     deleteRun: id => request(runPath(id), {method:'DELETE'}),
     importWorkerReport: file => request('/worker-reports', {method:'POST', headers:{'Content-Type':'application/zip'}, body:file, signal:AbortSignal.timeout(120000)}),
+    diagnosticSelfTest: () => request('/diagnostics/self-test', {method:'POST', signal:AbortSignal.timeout(120000)}),
     artifactUrl: (id, index) => { if (!Number.isInteger(index) || index < 0) throw new Error('Invalid artifact index'); return `${base()}${runPath(id)}/artifacts/${index}`; },
     reportUrl: (id, format) => { if (!['html', 'csv', 'json'].includes(format)) throw new Error('Unsupported report format'); return `${base()}${runPath(id)}/report${format === 'json' ? '' : `.${format}`}`; },
     models: () => request('/models'),

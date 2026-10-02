@@ -15,7 +15,7 @@ from pathlib import Path
 from app.services import benchmark as b
 from app.services.models import verify_model, public_model
 from app.services.metrics import comparison_summary
-from app.services.structural import fx_inventory, onnx_inventory, tflite_inventory, compare_onnx, compare_fx_onnx
+from app.services.structural import fx_inventory, onnx_inventory, tflite_inventory, compare_onnx, compare_fx_onnx, fx_boundaries
 from app.services.host_measurements import environment as host_environment
 
 
@@ -515,21 +515,13 @@ def _diagnostics(ep, first, profiles, spec, settings):
             try:
                 graph = onnx.shape_inference.infer_shapes(onnx.load(str(profile["path"])))
                 infos = {v.name: v for v in list(graph.graph.value_info) + list(graph.graph.output)}
+                boundaries = fx_boundaries(fx_inventory(ep), onnx_inventory(profile['path']))
                 for node in nodes:
-                    matching = []
-                    for target in graph.graph.node:
-                        props = {x.key: x.value for x in target.metadata_props}
-                        origin = props.get("pkg.torch.onnx.fx_node", "")
-                        # Match the exact FX definition, not a substring of another node's name.
-                        if origin.startswith(f"%{node.name} :"):
-                            matching.append(target)
-                    reasons[node.name] = 'no_exporter_origin' if not matching else 'decomposed_operation' if len(matching) > 1 else 'unsupported_operator_mapping'
-                    op = str(node.target).split(".")[-2] if "." in str(node.target) else ""
-                    if len(matching) == 1 and matching[0].domain in ("", "ai.onnx") and matching[0].op_type in allowed.get(op, set()):
-                        target = matching[0]
-                        if len(target.output) == 1 and target.output[0] in infos and node.name in captures:
-                            names[node.name] = target.output[0]
-                            reasons[node.name] = "mapped_boundary"
+                    boundary = boundaries.get(node.name, {})
+                    target = boundary.get('target')
+                    reasons[node.name] = boundary.get('reason_code', 'no_exporter_origin')
+                    if target and target['outputs'][0] in infos and node.name in captures:
+                        names[node.name] = target['outputs'][0]
                 del graph.graph.output[:]
                 # Tensor capture and extra graph outputs are bounded independently.
                 for name in dict.fromkeys(names.values()):
@@ -558,11 +550,15 @@ def _diagnostics(ep, first, profiles, spec, settings):
                 row.update(status=("pass" if np.allclose(candidate, ref, atol=settings["atol"], rtol=settings["rtol"]) else "drift") if finite else "nonfinite",
                            mae=float(diff.mean()) if finite else None, max_abs=float(diff.max()) if finite else None,
                            reason_code="measured_boundary", expected_shape=list(ref.shape), actual_shape=list(candidate.shape),
-                           detail="Final output in measured runtime." if name == "output.logits" else "Exact FX node and single compatible operator; diagnostic runtime disables graph optimization. First test image only.")
+                           detail="Final output in measured runtime." if name == "output.logits" else "Exact exporter origin or supported unique module-scope/shape rule; single compatible output boundary; diagnostic runtime disables graph optimization. First test image only.")
                 if finite:
                     index = np.unravel_index(np.argmax(diff), diff.shape)
                     row.update(max_error_index=[int(x) for x in index], expected_value=float(ref[index]), actual_value=float(candidate[index]))
             rows.append(row)
+    seen = set()
+    for row in rows:
+        if row['status'] in {'drift', 'nonfinite', 'mismatch'} and row['profile'] not in seen:
+            row['first_observed_divergence'] = True; seen.add(row['profile'])
     return rows
 
 

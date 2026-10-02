@@ -2,7 +2,7 @@
 const $ = selector => document.querySelector(selector);
 const api = window.EdgeLensAPI;
 const desktop = Boolean(window.EDGELENS_CONFIG?.desktop);
-const workerName = report.environment?.execution_origin === 'imported_linux_worker' ? 'Linux worker · imported measurements' : desktop ? 'this computer' : 'the server CPU';
+const workerName = desktop ? 'this computer' : 'the server CPU';
 const state = { mode: 'demo', page: 'overview', report: window.EdgeLensDemoReport, run: null, capabilities: null, datasets: [], models: [], edgeRecords: [], history: [], connected: false, creating: false, uploading: false, pollToken: 0, connectionToken: 0, impulseConnections: [], impulseTargets: {}, pendingEstimate: null, estimateBusy: false };
 const pages = { impulse: ['Edge Impulse', 'Connect projects and estimate resources for an evaluated test. No hardware needed.', 'Edge Impulse'], edge: ['Edge hardware', 'Prepare firmware and review separately recorded physical-device evidence.', 'Edge hardware'], overview: ['Validation overview', 'See what conversion changes. Keep the evidence.', 'Overview'], diagnostics: ['Layer diagnostics', 'Find the differences behind the final predictions.', 'Layer diagnostics'], report: ['Reports & history', 'Keep the complete record of each experiment.', 'Reports & history'] };
 const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
@@ -57,9 +57,12 @@ function renderChart(metrics) {
 }
 function renderReport() {
   const report = state.report, demo = state.mode === 'demo';
+  const workerName = report?.environment?.execution_origin === 'imported_linux_worker' ? 'Linux worker · imported measurements' : desktop ? 'this computer' : 'the server CPU';
   $('#result-overview').hidden = !report; $('#empty-results').hidden = Boolean(report); $('#report-page .report-panel').hidden = !report;
   document.querySelectorAll('[data-export]').forEach(button => { button.disabled = !report; });
   if (!report) { $('#structural-evidence').textContent = 'No structural evidence loaded.'; $('#host-measurement-evidence').textContent = 'No measurements loaded.'; renderLayers(); renderDeveloperReport(); return; }
+  const faults = report.fault_validation;
+  $('#fault-validation-evidence').innerHTML = faults ? `<p>MEASURED · ${escapeHtml(faults.scope)}</p><div class="table-scroll"><table><thead><tr><th>Known fault/control</th><th>Expected</th><th>First observed difference or rejection</th><th>Check</th></tr></thead><tbody>${faults.cases.map(c => `<tr><td>${escapeHtml(human(c.fault))}</td><td>${escapeHtml(c.expected)}</td><td>${escapeHtml(c.first_observed_divergence || c.error || 'No difference')}</td><td>${c.passed ? 'PASS' : 'FAIL'}</td></tr>`).join('')}</tbody></table></div><p>${escapeHtml(faults.limitation)}</p>` : '<p>Run the self-test to save expected versus detected outcomes in report history.</p>';
   const metrics = report.metrics || [], reference = metrics.find(metric => ['pytorch', 'reference', 'baseline'].includes(metric.profile)) || metrics[0];
   const standard = metrics.find(metric => ['fp32', 'standard', 'default', 'standard_conversion'].includes(metric.profile)) || metrics[1];
   const configured = report.experiment_type === 'deployment_optimization' ? metrics.find(metric => metric.profile === report.selection?.selected) : metrics.find(metric => ['static_int8', 'dashboard', 'configured', 'dashboard_configured'].includes(metric.profile)) || metrics[2];
@@ -81,12 +84,14 @@ function renderReport() {
   const candidateFailures = (report.candidates || []).filter(candidate => candidate.status === 'failed').length;
   $('#run-status').textContent = demo ? 'Illustrative' : candidateFailures ? 'Completed with failures' : 'Measured'; $('#run-status').className = `status ${demo ? 'neutral' : candidateFailures ? 'warning' : 'pass'}`;
   $('#run-id').textContent = demo ? 'DEMO · NOT MEASURED' : state.run?.id || 'Saved report';
-  $('#chart-label').textContent = demo ? 'Illustrative CPU values' : desktop ? 'This computer · CPU' : 'Server CPU only'; renderChart(metrics);
+  $('#chart-label').textContent = demo ? 'Illustrative CPU values' : report.environment?.execution_origin === 'imported_linux_worker' ? 'Linux worker · CPU' : desktop ? 'This computer · CPU' : 'Server CPU only';
+  $('#host-measurement-location').textContent = demo ? 'ILLUSTRATIVE · not measured.' : `MEASURED on ${workerName}.`;
+  $('#environment-label').textContent = report.environment?.execution_origin === 'imported_linux_worker' ? 'Desktop · Linux worker report' : demo ? 'Illustrative demo' : desktop ? 'Desktop · local CPU' : 'Server CPU workspace'; renderChart(metrics);
   $('#comparison-body').innerHTML = metrics.map((metric, index) => `<tr><td><div class="framework-cell"><span class="framework-logo ${['torch', 'onnx-logo', 'lite'][index % 3]}">${index + 1}</span><div><strong>${escapeHtml(metric.label || human(metric.profile))}</strong><small>${metric.profile === 'imported' ? 'Uploaded model; no PyTorch reference' : index === 0 ? 'Original reference' : index === 1 ? 'Standard settings' : 'Configured settings'}</small></div></div></td><td>${number(metric.accuracy_pct)}${numeric(metric.accuracy_pct) ? '%' : ''}</td><td>${delta(metric.accuracy_delta_pp)}</td><td>${number(metric.agreement_pct)}${numeric(metric.agreement_pct) ? '%' : ''}</td><td>${number(metric.latency_p50_ms, 3)} / ${number(metric.latency_p95_ms, 3)}</td><td>${number(metric.conversion_seconds)}</td><td>${number(numeric(metric.size_bytes) ? metric.size_bytes / 1048576 : null)}</td><td>${scientific(metric.output_mae)}</td></tr>`).join('');
   $('#target-name').textContent = report.target?.name || human(report.target?.id); $('#target-status').textContent = human(report.target?.status);
   $('#target-notes').innerHTML = list(report.target?.notes?.length ? report.target.notes : ['No target-device benchmark has been recorded.']);
   $('#result-summary').textContent = summaryText(report.summary) || 'Review the measured metrics and layer evidence before deciding whether this conversion meets your requirements.';
-  $('#report-model').textContent = displayName(report.model); $('#report-run-id').textContent = $('#run-id').textContent; $('#report-source').textContent = demo ? 'Illustrative data · not evidence' : desktop ? 'Measured · saved locally' : 'Measured · saved on server';
+  $('#report-model').textContent = displayName(report.model); $('#report-run-id').textContent = $('#run-id').textContent; $('#report-source').textContent = demo ? 'Illustrative data · not evidence' : report.environment?.execution_origin === 'imported_linux_worker' ? 'MEASURED on Linux worker · imported locally' : desktop ? 'Measured · saved locally' : 'Measured · saved on server';
   $('#report-summary').textContent = summaryText(report.summary);
   const environment = report.environment || {}, facts = [ ['Dataset', displayName(report.dataset)], ['Images / classes', `${number(report.dataset?.image_count, 0)} / ${number(report.dataset?.class_count, 0)}`], ['Execution location', demo ? 'Illustrative CPU values' : workerName], ['Platform', environment.platform || environment.system || environment.device || 'See full report'], ['CPU model', environment.processor || 'UNAVAILABLE'], ['Power plan', environment.power_plan || 'UNAVAILABLE'], ['CPU threads', environment.settings?.threads ?? state.run?.request?.settings?.threads ?? '—'], ['Deployment goal', report.target?.name || human(report.target?.id)], ['Device reports', String((report.edge_results || []).filter(x => x.kind === 'hardware').length)] ];
   $('#report-facts').innerHTML = facts.map(([key, value]) => `<dt>${escapeHtml(key)}</dt><dd>${escapeHtml(value)}</dd>`).join('');
@@ -118,7 +123,8 @@ function updateReadiness() {
   const runtime = model?.format === 'tflite' ? {available:state.capabilities?.imported_tflite_execution,reason:'Install ai-edge-litert for imported TFLite inference.'} : state.capabilities?.runtimes?.[$('#run-format').value];
   const quantizing = ['quantization_compare', 'deployment_search'].includes($('#run-strategy').value);
   const splitIds = [$('#calibration-select').value, $('#validation-select').value, $('#dataset-select').value];
-  const calibrationReady = quantizing ? splitIds.every(Boolean) && new Set(splitIds).size === 3 : $('#run-strategy').value !== 'fidelity_search' || ($('#calibration-select').value && $('#calibration-select').value !== $('#dataset-select').value);
+  const tfliteCalibration = model?.format === 'pt2' && $('#run-format').value === 'tflite';
+  const calibrationReady = tfliteCalibration ? Boolean($('#calibration-select').value && $('#calibration-select').value !== $('#dataset-select').value) : quantizing ? splitIds.every(Boolean) && new Set(splitIds).size === 3 : $('#run-strategy').value !== 'fidelity_search' || ($('#calibration-select').value && $('#calibration-select').value !== $('#dataset-select').value);
   const estimateReady = !estimateEnabled() || (selectedImpulseProject('#test-ei-project') && $('#test-ei-device').value);
   const ready = state.connected && calibrationReady && estimateReady && runtime?.available && $('#dataset-select').value && !state.creating && !state.uploading && !state.estimateBusy && !isActive(state.run);
   $('#start-benchmark').disabled = !ready;
@@ -607,4 +613,12 @@ $('#worker-import-form').addEventListener('submit', async event => {
     $('#worker-import-status').textContent = 'Imported. Linux measurements remain labelled as worker evidence.';
   } catch (cause) { $('#worker-import-status').textContent = describeError(cause); error(describeError(cause)); }
   finally { button.disabled = false; }
+});
+
+$('#diagnostic-self-test').addEventListener('click', async () => {
+  if (state.mode !== 'real' || !state.connected) { error('Connect the local engine to run the diagnostic self-test.'); return; }
+  const button = $('#diagnostic-self-test'); button.disabled = true; button.textContent = 'Running known faults…';
+  try { const run = await api.diagnosticSelfTest(); await refreshHistory(); await loadRun(run.id, 'diagnostics'); }
+  catch (cause) { error(describeError(cause)); }
+  finally { button.disabled = false; button.textContent = 'Run seven checks'; }
 });

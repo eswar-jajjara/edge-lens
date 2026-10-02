@@ -10,6 +10,39 @@ from app.services.evidence import diagnostic_groups, evidence_sections
 router = APIRouter()
 
 
+@router.post('/diagnostics/self-test', status_code=201)
+def diagnostic_self_test(request: Request):
+    if not request.app.state.config.allow_custom_models:
+        raise HTTPException(403, 'Diagnostic self-tests are available in the local developer workspace only')
+    repository = request.app.state.repository
+    if any(run['status'] in {'queued', 'running'} for run in repository.list_runs()):
+        raise HTTPException(409, 'Wait for active benchmarks to finish before running the diagnostic self-test')
+    from app.services.fault_validation import run_fault_suite
+    from app.services.benchmark import _artifact
+    run = repository.create_run({'model_id': 'controlled_fault_self_test', 'format': 'onnx', 'target': 'esp32', 'dataset_id': None,
+                                 'strategy': 'controlled_faults', 'settings': {'threads': 1}, 'edge_estimate': {'enabled': False}})
+    directory = repository.data_dir / 'runs' / run['id']
+    try:
+        repository.update_run(run['id'], 'running')
+        faults = run_fault_suite(directory)
+        report = {'schema_version': 5, 'source': 'measured', 'run_id': run['id'], 'created_at': run['created_at'],
+                  'model': {'name': 'Controlled diagnostic self-test · synthetic classifier'},
+                  'summary': {'conclusion': f"{sum(c['passed'] for c in faults['cases'])}/{len(faults['cases'])} known-fault/control checks passed."},
+                  'fault_validation': faults, 'metrics': [], 'predictions': [], 'structural': [],
+                  'layers': [dict(row, profile=case['fault'], reason_code='controlled_fault_capture', first_observed_divergence=row['name'] == case['first_observed_divergence'])
+                             for case in faults['cases'] for row in case.get('numerical', [])],
+                  'artifacts': [_artifact(p.stem, p.suffix.removeprefix('.'), p) for p in directory.iterdir() if p.suffix in {'.onnx', '.json'}],
+                  'edge_results': [], 'edge_estimate_request': {'enabled': False},
+                  'environment': {'benchmark_scope': 'synthetic_diagnostic_validation', 'settings': {'threads': 1}},
+                  'methodology': ['Deliberate faults in a disposable synthetic classifier; original uploaded models are never modified.'],
+                  'limitations': [faults['scope'], faults['limitation'], 'No dataset-accuracy, latency, physical-device or provider-resource claim from this self-test.']}
+        repository.update_run(run['id'], 'completed', report=report)
+        return public_run(repository.get_run(run['id']))
+    except Exception as exc:
+        repository.update_run(run['id'], 'failed', error=f'Diagnostic self-test failed: {type(exc).__name__}: {str(exc)[:250]}')
+        raise HTTPException(503, 'Diagnostic self-test could not complete. Check that ONNX and ONNX Runtime are installed.') from exc
+
+
 def required_run(request, run_id):
     run = request.app.state.repository.get_run(run_id)
     if run is None:

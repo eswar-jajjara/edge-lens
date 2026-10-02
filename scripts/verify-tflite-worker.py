@@ -23,4 +23,8 @@ print('Verified actual Linux PyTorch / TFLite FP32 / static INT8 evaluation and 
 import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'backend'))
 from app.services.worker_bundle import export_bundle
+from app.services.structural import tflite_inventory
+inventory = tflite_inventory(path.parent / 'dashboard.tflite')
+assert any(t['dtype'] == 'INT8' and t['constant_bytes'] > 0 and t['quantization_scales'] for t in inventory['tensors']), 'No calibrated INT8 weights found'
+assert any(t['dtype'] == 'INT8' and t['constant_bytes'] == 0 and t['quantization_scales'] for t in inventory['tensors']), 'No quantized INT8 activations found'
 export_bundle(path, args.results / 'edgelens-worker-report.zip')

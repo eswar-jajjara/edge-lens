@@ -68,3 +68,17 @@ See [architecture and frameworks](docs/ARCHITECTURE.md), [methodology](docs/BENC
 ## Phase 3 checkpoint
 
 See [edge profiling and evidence](docs/EDGE-PROFILING.md) for exact artifact matching, target discovery, candidate-scoped diagnostics and the small 32x32 profiling fixture. The first live TFLite profile succeeded for the ESP-EYE target, with a saved provider response and a VERIFIED link to the same evaluated model bytes. Reports separate host MEASURED, provider ESTIMATED and ESP32 UNAVAILABLE. This synthetic fixture verifies the integration; it is not conversion-superiority evidence. A QDQ ONNX probe and validated Linux TFLite INT8 conversion remain pending. Existing saved history remains on SQLite schema 4.
+
+
+## Review-II objective completion · version 0.9.0
+
+New structural evidence, seven controlled fault checks, pinned Linux FP32/static
+INT8 TFLite conversion, portable worker-report import, 100-sample timing defaults
+and sampled process RSS are documented in [Stages 1–5](docs/STAGES-1-5.md).
+Open **Layer diagnostics → Run seven checks** for a saved self-test, or start a
+new supported ONNX benchmark to see mapping reasons and graph connections.
+In **Reports & history**, import the inner `edgelens-worker-report.zip` produced
+by the Linux worker; Linux timings remain labelled as worker measurements.
+Use **Edge Impulse** to request estimates for the exact evaluated TFLite artifact.
+Local WSL has not been verified in this session. Physical-device measurements
+and arbitrary cross-format intermediate mapping remain unavailable.
