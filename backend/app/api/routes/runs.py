@@ -1,4 +1,5 @@
 from pathlib import Path
+from zipfile import BadZipFile
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import Response, FileResponse
 from app.schemas.runs import CreateRunRequest
@@ -84,6 +85,21 @@ def submit_run(payload: CreateRunRequest, request: Request):
         return public_run(request.app.state.validation.submit(payload.model_dump(), dataset))
     except QueueFull as error:
         raise HTTPException(429, str(error)) from error
+
+
+@router.post('/worker-reports', status_code=201)
+async def import_worker_report(request: Request):
+    if not request.app.state.config.allow_custom_models:
+        raise HTTPException(403, 'Worker imports are available in the local developer workspace only')
+    from app.services.worker_bundle import import_bundle, MAX_BYTES
+    content = bytearray()
+    async for chunk in request.stream():
+        content.extend(chunk)
+        if len(content) > MAX_BYTES: raise HTTPException(413, 'Worker bundle exceeds 100 MiB')
+    try:
+        return public_run(import_bundle(bytes(content), request.app.state.repository))
+    except (ValueError, KeyError, TypeError, OSError, BadZipFile) as exc:
+        raise HTTPException(422, 'Worker bundle is invalid or its evaluated artifact hashes do not match.') from exc
 
 
 @router.get("/runs")

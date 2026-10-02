@@ -6,6 +6,9 @@ on:
       - '.github/workflows/tflite-worker.yml'
       - 'backend/requirements-tflite-linux.txt'
       - 'backend/app/services/tflite_conversion.py'
+      - 'backend/app/services/worker_bundle.py'
+      - 'scripts/verify-tflite-worker.py'
+      - 'backend/requirements-tflite-linux-tested.txt'
 permissions:
   contents: read
 jobs:
@@ -22,7 +25,7 @@ jobs:
           python-version: '3.11'
           cache: pip
           cache-dependency-path: backend/requirements-tflite-linux.txt
-      - run: python -m pip install -r backend/requirements-tflite-linux.txt --extra-index-url https://download.pytorch.org/whl/cpu
+      - run: python -m pip install -r backend/requirements-tflite-linux-tested.txt --extra-index-url https://download.pytorch.org/whl/cpu
       - run: python -m pip freeze > worker-versions.txt
       - run: python scripts/create-precision-demo.py --output worker-fixture
       - name: Convert and evaluate the same held-out images

@@ -20,3 +20,7 @@ for metric in report['metrics']:
     assert len(metric['latency_samples_ms']) == 100
     assert metric['artifact_sha256'] in {a['sha256'] for a in report['artifacts']}
 print('Verified actual Linux PyTorch / TFLite FP32 / static INT8 evaluation and artifact hashes. Physical ESP32 remains UNAVAILABLE.')
+import sys
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'backend'))
+from app.services.worker_bundle import export_bundle
+export_bundle(path, args.results / 'edgelens-worker-report.zip')

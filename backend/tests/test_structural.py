@@ -4,6 +4,7 @@ import tempfile
 import unittest
 import importlib.util
 import os
+from uuid import uuid4
 from app.services.structural import compare_onnx
 
 
@@ -11,15 +12,15 @@ class StructuralTests(unittest.TestCase):
     @unittest.skipUnless(importlib.util.find_spec('onnx') and importlib.util.find_spec('onnxruntime'), 'Optional ONNX runtime not installed')
     def test_known_faults_and_unchanged_control(self):
         from app.services.fault_validation import run_fault_suite
-        with tempfile.TemporaryDirectory(dir=os.environ.get('EDGELENS_TEST_TMP')) as tmp:
-            result = run_fault_suite(Path(tmp) / 'faults')
-            self.assertTrue(result['passed'], result['cases'])
-            rows = {r['fault']: r for r in result['cases']}
-            self.assertEqual(rows['changed_weights']['first_observed_divergence'], 'classifier')
-            self.assertEqual(rows['replaced_operator']['first_observed_divergence'], 'activation')
-            self.assertEqual(rows['wrong_preprocessing']['first_observed_divergence'], 'scale')
-            self.assertIsNotNone(rows['wrong_shape']['error'])
-            self.assertIsNotNone(rows['removed_operator']['error'])
+        directory = Path(os.environ.get('EDGELENS_TEST_TMP', tempfile.gettempdir())) / ('faults-' + uuid4().hex)
+        result = run_fault_suite(directory)
+        self.assertTrue(result['passed'], result['cases'])
+        rows = {r['fault']: r for r in result['cases']}
+        self.assertEqual(rows['changed_weights']['first_observed_divergence'], 'classifier')
+        self.assertEqual(rows['replaced_operator']['first_observed_divergence'], 'activation')
+        self.assertEqual(rows['wrong_preprocessing']['first_observed_divergence'], 'scale')
+        self.assertIsNotNone(rows['wrong_shape']['error'])
+        self.assertIsNotNone(rows['removed_operator']['error'])
 
     def test_ambiguous_identity_never_matches(self):
         node = {'name': 'same', 'operation': 'Relu', 'domain': '', 'inputs': [], 'outputs': [], 'parents': [], 'output_shapes': [], 'attributes_sha256': '', 'weights': {}}

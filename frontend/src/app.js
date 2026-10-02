@@ -2,7 +2,7 @@
 const $ = selector => document.querySelector(selector);
 const api = window.EdgeLensAPI;
 const desktop = Boolean(window.EDGELENS_CONFIG?.desktop);
-const workerName = desktop ? 'this computer' : 'the server CPU';
+const workerName = report.environment?.execution_origin === 'imported_linux_worker' ? 'Linux worker · imported measurements' : desktop ? 'this computer' : 'the server CPU';
 const state = { mode: 'demo', page: 'overview', report: window.EdgeLensDemoReport, run: null, capabilities: null, datasets: [], models: [], edgeRecords: [], history: [], connected: false, creating: false, uploading: false, pollToken: 0, connectionToken: 0, impulseConnections: [], impulseTargets: {}, pendingEstimate: null, estimateBusy: false };
 const pages = { impulse: ['Edge Impulse', 'Connect projects and estimate resources for an evaluated test. No hardware needed.', 'Edge Impulse'], edge: ['Edge hardware', 'Prepare firmware and review separately recorded physical-device evidence.', 'Edge hardware'], overview: ['Validation overview', 'See what conversion changes. Keep the evidence.', 'Overview'], diagnostics: ['Layer diagnostics', 'Find the differences behind the final predictions.', 'Layer diagnostics'], report: ['Reports & history', 'Keep the complete record of each experiment.', 'Reports & history'] };
 const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
@@ -88,7 +88,7 @@ function renderReport() {
   $('#result-summary').textContent = summaryText(report.summary) || 'Review the measured metrics and layer evidence before deciding whether this conversion meets your requirements.';
   $('#report-model').textContent = displayName(report.model); $('#report-run-id').textContent = $('#run-id').textContent; $('#report-source').textContent = demo ? 'Illustrative data · not evidence' : desktop ? 'Measured · saved locally' : 'Measured · saved on server';
   $('#report-summary').textContent = summaryText(report.summary);
-  const environment = report.environment || {}, facts = [ ['Dataset', displayName(report.dataset)], ['Images / classes', `${number(report.dataset?.image_count, 0)} / ${number(report.dataset?.class_count, 0)}`], ['Execution location', demo ? 'Illustrative CPU values' : workerName], ['Platform', environment.platform || environment.system || environment.device || 'See full report'], ['CPU threads', environment.settings?.threads ?? state.run?.request?.settings?.threads ?? '—'], ['Deployment goal', report.target?.name || human(report.target?.id)], ['Device reports', String((report.edge_results || []).filter(x => x.kind === 'hardware').length)] ];
+  const environment = report.environment || {}, facts = [ ['Dataset', displayName(report.dataset)], ['Images / classes', `${number(report.dataset?.image_count, 0)} / ${number(report.dataset?.class_count, 0)}`], ['Execution location', demo ? 'Illustrative CPU values' : workerName], ['Platform', environment.platform || environment.system || environment.device || 'See full report'], ['CPU model', environment.processor || 'UNAVAILABLE'], ['Power plan', environment.power_plan || 'UNAVAILABLE'], ['CPU threads', environment.settings?.threads ?? state.run?.request?.settings?.threads ?? '—'], ['Deployment goal', report.target?.name || human(report.target?.id)], ['Device reports', String((report.edge_results || []).filter(x => x.kind === 'hardware').length)] ];
   $('#report-facts').innerHTML = facts.map(([key, value]) => `<dt>${escapeHtml(key)}</dt><dd>${escapeHtml(value)}</dd>`).join('');
   $('#report-methodology').innerHTML = list(report.methodology); $('#report-limitations').innerHTML = list(report.limitations?.length ? report.limitations : ['Server measurements do not establish performance on the target edge device.']);
   $('#model-artifacts').innerHTML = !demo && report.artifacts?.length ? report.artifacts.map((artifact, index) => `<button class="button secondary" data-artifact="${index}">Save ${escapeHtml(human(artifact.profile))}${['calibration_statistics', 'diagnostic_report'].includes(artifact.role) ? ' JSON' : ' model'} ↓</button>`).join('') : '<p class="field-help">Converted model downloads appear after a measured run.</p>';
@@ -592,3 +592,19 @@ $('#refresh-ei').addEventListener('click', event => impulseAction(event.currentT
   const project = selectedImpulseProject(); if (!project || project.project_id !== job.project_id) throw new Error(`Connect and select the original project ${job.project_id} to fetch this estimate.`);
   await api.refreshProfile(job.id,{connection_id:project.connection_id}); await reloadEdgeReport(); return 'Provider estimate saved separately from laptop and hardware measurements.';
 }));
+
+$('#worker-import-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  if (state.mode !== 'real' || !state.connected) { error('Connect the local engine before importing worker evidence.'); return; }
+  const file = $('#worker-report-file').files[0];
+  if (!file || !$('#worker-report-trust').checked) return;
+  const button = $('#worker-import-button'); button.disabled = true;
+  $('#worker-import-status').textContent = 'Checking report and artifact hashes…';
+  try {
+    const run = await api.importWorkerReport(file);
+    await loadRun(run.id, 'overview');
+    await refreshHistory();
+    $('#worker-import-status').textContent = 'Imported. Linux measurements remain labelled as worker evidence.';
+  } catch (cause) { $('#worker-import-status').textContent = describeError(cause); error(describeError(cause)); }
+  finally { button.disabled = false; }
+});

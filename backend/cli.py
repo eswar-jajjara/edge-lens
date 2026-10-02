@@ -29,6 +29,7 @@ def main():
     parser.add_argument('--search-seconds', type=int, default=600)
     parser.add_argument('--calibration-method', choices=['MinMax', 'Entropy', 'Percentile'], default='MinMax')
     parser.add_argument('--per-tensor', action='store_true', help='Use per-tensor instead of per-channel INT8 weight ranges')
+    parser.add_argument('--bundle-output', type=Path, help='New portable worker ZIP to import in the Windows desktop tool')
     parser.add_argument('--warmup-runs', type=int, default=10)
     parser.add_argument('--measured-runs', type=int, default=100)
     parser.add_argument('--threads', type=int, default=1)
@@ -78,6 +79,9 @@ def main():
         (directory/'report.json').write_text(json.dumps(exported, indent=2), encoding='utf-8')
         (directory/'report.html').write_text(report_html(exported), encoding='utf-8')
         (directory/'report.csv').write_text(report_csv(exported), encoding='utf-8')
+        if args.bundle_output:
+            from app.services.worker_bundle import export_bundle
+            export_bundle(directory/'report.json', args.bundle_output)
         print(report['summary']['conclusion'])
         print(f'Report: {directory / "report.html"}')
     except Exception as exc:
