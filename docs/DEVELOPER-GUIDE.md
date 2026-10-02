@@ -78,7 +78,7 @@ Raspberry Pi remains a selectable deployment goal; a Pi hardware runner is futur
 
 ## Optional Edge Impulse
 
-Open a completed TFLite run, select its evaluated artifact, and enter the project ID and API key on Edge hardware. Click **Load supported targets** and select a device returned by your project. Confirm the explicit upload checkbox, submit, then fetch the completed result after processing. The engine requires an explicit held-out metric hash matching the uploaded bytes; old runs without this evidence need re-evaluation.
+In version 0.9.1, use the separate **Edge Impulse** section. Connect a project with its Read + Write key, click **Load supported targets**, and select a completed test and an evaluated ONNX or TFLite artifact. Confirm the explicit upload checkbox, submit, then fetch the completed result after processing. ONNX uses provider conversion and replaces the project's BYOM model; converted-model accuracy remains unavailable. The engine requires an explicit held-out metric hash matching the uploaded bytes; old runs without this evidence need re-evaluation. See [ONNX profiling](EDGE-IMPULSE-ONNX.md) and [the complete manual software test checklist](MANUAL-SOFTWARE-TESTS.md).
 
 Keys stay in request/session memory. SQLite stores the model/evaluation hash, target, timestamp, provider URL and sanitized response, with credentials removed. Resources are ESTIMATED; ESP32 is UNAVAILABLE without a physical observation. See [the Phase 3 guide](EDGE-PROFILING.md) for the 32x32 fixture, exact workflow and remaining live/Linux experiments. Live integration is unverified until a real response is recorded.
 
