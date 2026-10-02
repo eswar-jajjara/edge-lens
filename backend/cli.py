@@ -29,6 +29,9 @@ def main():
     parser.add_argument('--search-seconds', type=int, default=600)
     parser.add_argument('--calibration-method', choices=['MinMax', 'Entropy', 'Percentile'], default='MinMax')
     parser.add_argument('--per-tensor', action='store_true', help='Use per-tensor instead of per-channel INT8 weight ranges')
+    parser.add_argument('--warmup-runs', type=int, default=10)
+    parser.add_argument('--measured-runs', type=int, default=100)
+    parser.add_argument('--threads', type=int, default=1)
     parser.add_argument('--format', choices=['onnx', 'tflite'], required=True)
     parser.add_argument('--target', choices=['esp32', 'raspberry_pi'], default='esp32')
     parser.add_argument('--output', type=Path, required=True, help='Local experiment storage directory')
@@ -37,13 +40,13 @@ def main():
     if not args.trust_own_model:
         parser.error('Use --trust-own-model only for an export you trust.')
     spec = ModelSpec.model_validate(json.loads(args.spec.read_text(encoding='utf-8')) | {'trusted_source': True})
-    strategy = args.strategy or ('quantization_compare' if args.validation else 'fidelity_search' if args.calibration else 'fixed_profiles')
+    strategy = args.strategy or ('quantization_compare' if args.validation else 'fidelity_search' if args.calibration and args.format == 'onnx' else 'fixed_profiles')
     if strategy in {'quantization_compare', 'deployment_search'} and (spec.format not in {'pt2', 'onnx'} or args.format != 'onnx' or not args.calibration or not args.validation):
         parser.error('FP32/INT8 requires PT2 or FP32 ONNX, --format onnx, --calibration and --validation; --dataset is held-out test.')
     if spec.format != 'pt2' and (args.format != spec.format or (args.calibration and strategy not in {'quantization_compare', 'deployment_search'})):
         parser.error('Imported ONNX/TFLite models must use their existing format without calibration search.')
-    if args.calibration and args.format != 'onnx':
-        parser.error('Calibration search currently supports PT2 → ONNX only.')
+    if args.format == 'tflite' and spec.format == 'pt2' and not args.calibration:
+        parser.error('PT2 → INT8 TFLite requires separate --calibration images in the Linux worker.')
     for path, limit in ((args.model, 100 * 1024 * 1024), (args.dataset, 50 * 1024 * 1024), (args.calibration, 50 * 1024 * 1024), (args.validation, 50 * 1024 * 1024)):
         if path and path.stat().st_size > limit:
             parser.error(f'{path.name} exceeds its upload size limit')
@@ -57,6 +60,7 @@ def main():
     if args.validation:
         validation = ingest_dataset(args.validation.read_bytes(), args.validation.stem, data); repo.save_dataset(validation)
     request = CreateRunRequest(model_id=model['id'], format=args.format, target=args.target, dataset_id=dataset['id'],
+                               settings={'warmup_runs': args.warmup_runs, 'measured_runs': args.measured_runs, 'threads': args.threads},
                                strategy=strategy, calibration_dataset_id=calibration['id'] if calibration else None,
                                validation_dataset_id=validation['id'] if validation else None,
                                quantization={'calibration_method': args.calibration_method, 'per_channel': not args.per_tensor},

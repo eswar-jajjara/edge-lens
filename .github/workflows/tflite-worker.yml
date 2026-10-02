@@ -1,0 +1,39 @@
+name: Verify Linux TFLite worker
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/tflite-worker.yml'
+      - 'backend/requirements-tflite-linux.txt'
+      - 'backend/app/services/tflite_conversion.py'
+permissions:
+  contents: read
+jobs:
+  convert-evaluate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    env:
+      PYTHONPATH: backend
+      OMP_NUM_THREADS: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: backend/requirements-tflite-linux.txt
+      - run: python -m pip install -r backend/requirements-tflite-linux.txt --extra-index-url https://download.pytorch.org/whl/cpu
+      - run: python -m pip freeze > worker-versions.txt
+      - run: python scripts/create-precision-demo.py --output worker-fixture
+      - name: Convert and evaluate the same held-out images
+        run: python backend/cli.py --model worker-fixture/colour-classifier.pt2 --spec worker-fixture/spec.json --calibration worker-fixture/calibration.zip --dataset worker-fixture/test.zip --format tflite --strategy fixed_profiles --target esp32 --output worker-results --trust-own-model --warmup-runs 10 --measured-runs 100
+      - name: Verify hashes, size and measured evidence
+        run: python scripts/verify-tflite-worker.py --results worker-results
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: tflite-worker-evidence
+          path: |
+            worker-results/
+            worker-versions.txt
+            worker-fixture/spec.json

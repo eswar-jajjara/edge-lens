@@ -6,8 +6,8 @@ class RunSettings(BaseModel):
     model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
     atol: float = Field(default=0.0001, ge=0, le=1)
     rtol: float = Field(default=0.001, ge=0, le=1)
-    warmup_runs: int = Field(default=3, ge=1, le=50, strict=True)
-    measured_runs: int = Field(default=10, ge=3, le=200, strict=True)
+    warmup_runs: int = Field(default=10, ge=1, le=100, strict=True)
+    measured_runs: int = Field(default=100, ge=3, le=1000, strict=True)
     threads: int = Field(default=1, ge=1, le=8, strict=True)
 
 

@@ -15,6 +15,8 @@ from pathlib import Path
 from app.services import benchmark as b
 from app.services.models import verify_model, public_model
 from app.services.metrics import comparison_summary
+from app.services.structural import fx_inventory, onnx_inventory, tflite_inventory, compare_onnx, compare_fx_onnx
+from app.services.host_measurements import environment as host_environment
 
 
 def _single(value):
@@ -425,7 +427,7 @@ def _run_quantization_comparison(request, dataset, output_dir):
                 "accuracy_resolution_pp": 100 / dataset["image_count"], "candidates": candidates,
                 "environment": {"benchmark_scope": "host_cpu", "platform": platform.platform(), "architecture": platform.machine(),
                                 "processor": platform.processor() or "not reported", "logical_cpus": os.cpu_count(),
-                                "python": platform.python_version(), "versions": _versions(), "settings": settings, "provider": "CPUExecutionProvider"},
+                                "python": platform.python_version(), "versions": _versions(), "settings": settings, "provider": "CPUExecutionProvider", **host_environment()},
                 "target": b._target(request["target"], "onnx"), "metrics": metrics, "layers": layers, "predictions": predictions,
                 "artifacts": artifacts, "edge_results": [],
                 "methodology": ["Fixed FP32 and static S8S8 QDQ configurations; standard PyTorch ONNX exporter optimize=True when source is PT2. No additional FP32 graph rewriting.",
@@ -434,13 +436,13 @@ def _run_quantization_comparison(request, dataset, output_dir):
                                 "Configurations are fixed before validation and test evaluation. Validation metrics are recorded; no candidate is selected or tuned using test results.",
                                 "Accuracy and output metrics cover every image of the corresponding split. Numerical reference is PyTorch for PT2 uploads or the uploaded FP32 ONNX baseline otherwise.",
                                 "Both ONNX sessions use CPUExecutionProvider, ORT_ENABLE_ALL, sequential execution and identical thread counts.",
-                                "Latency measures one fixed test image with warm-ups and rotating profile order. Decode, preprocessing, calibration, conversion and diagnostics are excluded; raw samples are saved.",
+                                "Latency cycles up to 16 shared test images with warm-ups and rotating profile order. Decode, preprocessing, calibration, conversion and diagnostics are excluded; raw samples are saved.",
                                 "Conversion seconds include the FP32 dependency export plus each candidate's transformation; incremental and dependency times are retained separately."],
                 "limitations": ["A QDQ graph can retain floating-point operations. Reported coverage describes graph boundaries, not a hardware kernel execution trace or fully integer firmware.",
                                 "Quantized layer mapping, sensitivity search, mixed precision and automatic constraint selection are future milestones.",
                                 "Imported ONNX cannot establish original PyTorch conversion loss; it can establish quantization differences against its FP32 baseline.",
                                 f"One changed prediction = {100 / dataset['image_count']:.6g} pp. Small datasets are smoke tests, not reliable model-quality evidence." if dataset["image_count"] < 300 else f"One changed prediction = {100 / dataset['image_count']:.6g} pp; this is sample accuracy, without a statistical significance claim.",
-                                "Host timings are not ESP32 or Raspberry Pi timings. No physical-device latency or peak RAM is measured. Serialized bytes are not runtime RAM or total firmware flash.",
+                                "Host timings and sampled process RSS are not physical-device latency or RAM. Serialized bytes are not runtime RAM or total firmware flash.",
                                 "Equal, slower, larger and less accurate candidates remain visible. A 0.001 pp accuracy step needs at least 100,000 test images; this bounded prototype does not support that scale."]}
         if optimizing:
             selection = optimization["selection"]
@@ -557,6 +559,7 @@ def run_developer_benchmark(request, dataset, output_dir):
     strategy = request.get("strategy", "fixed_profiles")
     calibration = request.get("_calibration")
     selection, layers, profiles, artifacts = None, [], [], []
+    structural = []
     torch, old_threads, ep = None, None, None
     try:
         source_path = output_dir / ("reference." + source["format"])
@@ -617,15 +620,14 @@ def run_developer_benchmark(request, dataset, output_dir):
             else:
                 if strategy == "fidelity_search":
                     raise ValueError("Fidelity search currently supports PT2 → ONNX only")
-                import litert_torch
-                for profile in ("standard", "dashboard"):
-                    target = output_dir / f"{profile}.tflite"
-                    started = time.perf_counter()
-                    litert_torch.convert(module, (sample,)).export(str(target))
-                    seconds = time.perf_counter() - started
-                    infer, _, _ = tflite_session(target, settings["threads"])
-                    profiles.append({"profile": profile, "label": f"{profile.title()} LiteRT FP32 (identical control)", "path": target,
-                                     "infer": checked(infer, spec), "conversion_seconds": seconds, "export_optimize": True})
+                from app.services.tflite_conversion import convert_profiles
+                if not calibration:
+                    raise ValueError("TFLite INT8 conversion requires a separate calibration dataset")
+                calibration_arrays, _ = load_images(calibration, spec)
+                disjoint_inputs(calibration_arrays, arrays)
+                for profile in convert_profiles(ep, sample, calibration_arrays, output_dir):
+                    infer, _, _ = tflite_session(profile['path'], settings['threads'])
+                    profiles.append({**profile, 'infer': checked(infer, spec), 'export_optimize': True})
             artifacts += [{**b._artifact(p["profile"], request["format"], p["path"]),
                            "runtime_optimize": p.get("runtime_optimize"), "export_optimize": p.get("export_optimize")} for p in profiles[1:]]
             if request["format"] == "onnx":
@@ -651,8 +653,20 @@ def run_developer_benchmark(request, dataset, output_dir):
                            "detail": f"Tensor shape {x['shape'].tolist()}; dtype {np.dtype(x['dtype']).name}; quantization {x['quantization']}. Original PyTorch tensors unavailable."} for x in interpreter.get_tensor_details()]
             profiles = [{"profile": "imported", "label": f"Uploaded {source['format'].upper()} classifier", "path": source_path,
                          "infer": checked(infer, spec), "conversion_seconds": None}]
+        reference_graph = fx_inventory(ep) if ep is not None else None
+        for profile in profiles:
+            if profile['path'].suffix not in {'.onnx', '.tflite'}: continue
+            try:
+                inventory = onnx_inventory(profile['path']) if profile['path'].suffix == '.onnx' else tflite_inventory(profile['path'])
+                comparison = compare_fx_onnx(reference_graph, inventory) if reference_graph and inventory['format'] == 'onnx' else None
+                structural.append({'profile': profile['profile'], 'inventory': inventory, 'comparison': comparison,
+                                   'reference_inventory': reference_graph,
+                                   'comparison_status': 'MEASURED' if comparison else 'UNAVAILABLE',
+                                   'reason': None if comparison else 'No proven cross-format graph mapping; inventory only.'})
+            except Exception as exc:
+                structural.append({'profile': profile['profile'], 'comparison_status': 'UNAVAILABLE', 'reason': str(exc)[:250]})
         reference_outputs = [profiles[0]["infer"](x) for x in arrays]
-        timings = b._time_profiles([(p["profile"], p["infer"], arrays[0]) for p in profiles], settings)
+        timings = b._time_profiles([(p["profile"], p["infer"], arrays[:16]) for p in profiles], settings)
         metrics, predictions = [], []
         for p in profiles:
             metric, per_image = evaluate_profile(p, arrays, reference_outputs, labels, dataset, settings, ep is not None)
@@ -668,14 +682,14 @@ def run_developer_benchmark(request, dataset, output_dir):
         return {"schema_version": 2, "source": "measured", "created_at": datetime.now(timezone.utc).isoformat(),
                 "model": spec, "dataset": _split_metadata(dataset, arrays, "test"),
                 "summary": summary, "selection": selection, "accuracy_resolution_pp": 100 / len(labels),
-                "environment": {"benchmark_scope": "host_cpu", "platform": platform.platform(), "python": platform.python_version(), "versions": versions, "settings": settings},
+                "environment": {"benchmark_scope": "host_cpu", "platform": platform.platform(), "python": platform.python_version(), "versions": versions, "settings": settings, **host_environment()},
                 "target": b._target(request["target"], request["format"]), "metrics": metrics, "layers": layers, "predictions": predictions,
-                "artifacts": artifacts, "edge_results": [],
+                "artifacts": artifacts, "edge_results": [], "structural": structural,
                 "methodology": ["Same uploaded model, declared preprocessing and labelled test images across all profiles.",
                                 "Preprocessing: resize with bilinear interpolation; (pixel * scale - mean) / std; declared RGB/grayscale and NCHW/NHWC layout.",
                                 "Calibration-guided selection uses separate images and no held-out labels or outputs; exact preprocessed overlap is rejected." if selection else "No calibration-guided selection was requested.",
                                 "Accuracy is labelled top-1; agreement compares with the supplied PyTorch reference when available. Deltas use percentage points.",
-                                "Timing uses one fixed preprocessed image, warm-ups and rotating profile order; excludes preprocessing, loading and conversion; includes invocation/output copy.",
+                                "Timing cycles up to 16 shared preprocessed images, with warm-ups and rotating profile order; excludes preprocessing, loading and conversion; includes invocation/output copy.",
                                 "EdgeLens search time includes both exports, session creation and calibration inference. Per-export times are retained in selection evidence.",
                                 "Layer evidence uses the first test image. An additional unoptimized diagnostic profile provides conservative operator mappings even when the selected artifact is optimized. It is not an extra accuracy/latency competitor. Unmapped operations are unverified, not passed. Final predictions cover every test image."],
                 "limitations": ["Custom classifiers currently require one fixed batch-one float32 image input and one finite [1, class_count] score output; imported TFLite also supports per-tensor int8/uint8 quantization.",
@@ -684,7 +698,7 @@ def run_developer_benchmark(request, dataset, output_dir):
                                 f"Accuracy step on this dataset is {100 / len(labels):.6g} percentage points. A 0.001 pp step would require at least 100,000 test images; this prototype accepts up to 1,000, subject to the preprocessing memory budget.",
                                 "Small latency differences can be timer/OS noise; inspect raw timing samples and repeat independent runs. No significance claim is made.",
                                 "Host CPU timings are not ESP32 or Raspberry Pi timings. Physical results and provider estimates are stored separately.",
-                                "No peak process RAM or energy measurement. Stored bytes and tensor arena usage are different quantities."]}
+                                "Sampled process RSS includes all loaded models and runtime state; it is not model-only RAM or a guaranteed true peak. Energy is unavailable."]}
     finally:
         if torch is not None and old_threads is not None:
             torch.set_num_threads(old_threads)

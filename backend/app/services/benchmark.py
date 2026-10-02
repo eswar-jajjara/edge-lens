@@ -88,7 +88,7 @@ def _artifact(profile: str, format_name: str, path: Path) -> dict:
 
 
 def _settings(request: dict) -> dict:
-    values = {"warmup_runs": 3, "measured_runs": 10, "threads": 1, "atol": 0.0001, "rtol": 0.001}
+    values = {"warmup_runs": 10, "measured_runs": 100, "threads": 1, "atol": 0.0001, "rtol": 0.001}
     values.update(request.get("settings", {}))
     for key, low, high in (("warmup_runs", 0, 100), ("measured_runs", 3, 1000), ("threads", 1, 16)):
         if type(values[key]) is not int or not low <= values[key] <= high:
@@ -179,12 +179,15 @@ def _evaluate(infer, inputs, reference_outputs, labels, settings, np) -> dict:
 
 
 def _time_profiles(profiles, settings, failures=None) -> dict:
-    """Rotate profile order across rounds, using the identical first input."""
+    """Rotate profiles and up to 16 shared inputs. Memory is measured separately."""
+    from app.services.host_measurements import spread, measure_memory
+    def choose(sample, index):
+        return sample[index % len(sample)] if isinstance(sample, list) else sample
     failed = failures if failures is not None else {}
     for name, infer, sample in profiles:
         try:
-            for _ in range(settings["warmup_runs"]):
-                infer(sample)
+            for index in range(settings["warmup_runs"]):
+                infer(choose(sample, index))
         except Exception as exc:
             if failures is None:
                 raise
@@ -197,14 +200,19 @@ def _time_profiles(profiles, settings, failures=None) -> dict:
                 continue
             try:
                 started = time.perf_counter_ns()
-                infer(sample)
+                infer(choose(sample, round_index))
                 timings[name].append((time.perf_counter_ns() - started) / 1_000_000)
             except Exception as exc:
                 if failures is None:
                     raise
                 failed[name] = exc
     return {name: {"latency_mean_ms": sum(values) / len(values), "latency_p50_ms": percentile(values, 50), "latency_p95_ms": percentile(values, 95),
-                   "latency_samples_ms": values} for name, values in timings.items() if name not in failed}
+                   "latency_samples_ms": values, **spread(values),
+                   "timing_input_count": min(len(sample), 16) if isinstance(sample, list) else 1,
+                   "timing_sample_indices": [i % len(sample) if isinstance(sample, list) else 0 for i in range(len(values))],
+                   "timing_low_sample_warning": len(values) < 100,
+                   **measure_memory(infer, choose(sample, 0))}
+            for name, infer, sample in profiles if name not in failed for values in [timings[name]]}
 
 
 def _ort_session(ort, path_or_bytes, threads: int, diagnostic: bool = False):
