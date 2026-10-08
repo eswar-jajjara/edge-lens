@@ -11,6 +11,16 @@ function client(fetch) {
 }
 const success = body => ({ ok: true, json: async () => body });
 
+test('comparison sends measured exports and references to the configured local engine', async () => {
+  let seen;
+  const api = client(async (url, options) => { seen = {url,options}; return success({report:{},html:'offline report',csv:'data'}); });
+  const payload = {reports:[{run_id:'run-one',source:'measured'}],references:[],title:'Framework comparison'};
+  assert.equal((await api.compareReports(payload)).html,'offline report');
+  assert.equal(seen.url,'https://api.example/api/v1/reports/comparison');
+  assert.equal(seen.options.method,'POST');
+  assert.deepEqual(JSON.parse(seen.options.body),payload);
+});
+
 test('project connection and listing never put credentials in URLs', async () => {
   const calls = [], api = client(async (url, options) => { calls.push({url,options}); return success({connections:[]}); });
   await api.connectImpulse('transient-test-key'); await api.impulseConnections();

@@ -1,4 +1,4 @@
-# EdgeLens 0.9.1: understand and test the software
+# EdgeLens 0.10.0: understand and test the software
 
 This guide covers the current desktop tool, including Stages 1–4 and the TFLite/ONNX Stage 5 integration. It excludes physical ESP32 measurements, serial capture and flashing.
 
@@ -222,6 +222,24 @@ Do not resubmit automatically after a POST timeout. Check Studio first: a lost r
 - [ ] Generate a **second disposable self-test**. Export it, then use its history Delete action. Try **Keep test** first; it should remain. Reopen the dialog and confirm deletion of that disposable run only.
 - [ ] Verify that run is gone but the first self-test, uploaded original models, datasets, exported files and other tests remain. Do not delete your main comparison evidence for this check.
 - [ ] Inspect **Edge hardware** and report evidence: actual ESP32 timing/memory must stay UNAVAILABLE. Do not flash, capture, or invent a device observation.
+
+### 13. Readable reports and cross-framework comparison
+
+- [ ] Export HTML from a measured run and confirm its accuracy, correct/total,
+  median/p95 latency and exact bytes agree with JSON. Check the three charts,
+  units, UNAVAILABLE values and expandable raw evidence.
+- [ ] Export JSON from two measured runs. In **Reports & history → Compare saved
+  results and published references**, choose them and optionally
+  `docs/reference-examples.json`; click **Prepare comparison**.
+- [ ] Save HTML, CSV and JSON. Verify the measured table has the original run
+  IDs/origins and that published figures remain REFERENCE. Different dataset or
+  hardware contexts must not produce an automatic internet superiority claim.
+- [ ] Try a demo JSON, repeated run ID or fault-only report: comparison should
+  reject it. A missing numeric value must display UNAVAILABLE, without a chart bar.
+- [ ] Open needed detail panels and Print → Save as PDF, landscape. Inspect the
+  preview before saving. The readable export does not change saved measurements.
+
+Continue with [the real-model final comparison pathway](FINAL-COMPARISON-WORKFLOW.md).
 
 ## Optional command-line check
 

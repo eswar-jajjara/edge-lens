@@ -1,0 +1,58 @@
+{
+  "references": [
+    {
+      "framework": "PyTorch / TorchVision",
+      "model": "MobileNetV2 IMAGENET1K_V1",
+      "weights": "MobileNet_V2_Weights.IMAGENET1K_V1",
+      "dataset": "ImageNet-1K validation (published complete evaluation)",
+      "accuracy_pct": 71.878,
+      "latency_p50_ms": null,
+      "size_bytes": null,
+      "published_size": "13.6 MB (rounded checkpoint size reported by TorchVision)",
+      "preprocessing": "RGB; bilinear shorter-side resize 256; centre crop 224; scale 1/255; mean [0.485,0.456,0.406]; std [0.229,0.224,0.225]",
+      "hardware": "Latency not supplied by this source",
+      "source_url": "https://docs.pytorch.org/vision/stable/models/generated/torchvision.models.mobilenet_v2.html",
+      "accessed_at": "2026-10-08",
+      "notes": "REFERENCE only. A subset or ImageNet-V2 test is a different evaluation. This is V1; DEFAULT currently identifies V2 and must not be substituted. Published checkpoint MB are not PT2 export bytes."
+    },
+    {
+      "framework": "ONNX / ONNX Model Zoo",
+      "model": "MobileNet v2-1.0-fp32, opset 12",
+      "weights": "Model Zoo MXNet-trained MobileNetV2 lineage",
+      "dataset": "Model Zoo published ImageNet evaluation; inspect its evaluation procedure",
+      "accuracy_pct": 69.48,
+      "latency_p50_ms": null,
+      "size_bytes": null,
+      "published_size": "13.3 MB (rounded ONNX download size)",
+      "hardware": "Comparable median latency not supplied",
+      "source_url": "https://github.com/onnx/models/blob/main/validated/vision/classification/mobilenet/README.md",
+      "accessed_at": "2026-10-08",
+      "notes": "REFERENCE only. These are not the TorchVision V1 weights. Do not call the accuracy gap a conversion improvement. Measure downloaded bytes for exact size."
+    },
+    {
+      "framework": "ONNX / ONNX Model Zoo",
+      "model": "MobileNet v2-1.0-qdq, opset 12",
+      "weights": "QDQ quantization of the Model Zoo FP32 artifact",
+      "dataset": "Model Zoo published evaluation; inspect its calibration and test procedure",
+      "accuracy_pct": 67.4,
+      "latency_p50_ms": null,
+      "size_bytes": null,
+      "published_size": "3.4 MB (rounded ONNX download size)",
+      "hardware": "Comparable median latency not supplied",
+      "source_url": "https://github.com/onnx/models/blob/main/validated/vision/classification/mobilenet/README.md",
+      "accessed_at": "2026-10-08",
+      "notes": "REFERENCE only. Quantization/dataset/runtime differ from an EdgeLens TorchVision conversion; reproduce the baseline locally for a direct comparison."
+    },
+    {
+      "framework": "LiteRT / TFLite",
+      "model": "Your exact TFLite classifier — reference still to be supplied",
+      "dataset": "UNAVAILABLE until the model creator supplies a comparable evaluation",
+      "accuracy_pct": null,
+      "latency_p50_ms": null,
+      "size_bytes": null,
+      "source_url": "https://developers.google.com/edge/litert/conversion/tensorflow/quantization/post_training_quantization",
+      "accessed_at": "2026-10-08",
+      "notes": "Methodology reference only. This page explains quantization; it is not a numeric benchmark for your classifier. Replace this row with the exact creator model, source, dataset and measured conditions when available."
+    }
+  ]
+}

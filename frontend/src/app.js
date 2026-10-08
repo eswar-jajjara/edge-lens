@@ -240,6 +240,30 @@ async function uploadDataset() {
   finally { state.uploading = false; updateReadiness(); }
 }
 function download(filename, content, type) { const url = URL.createObjectURL(new Blob([content], { type })), anchor = document.createElement('a'); anchor.href = url; anchor.download = filename; document.body.append(anchor); anchor.click(); anchor.remove(); setTimeout(() => URL.revokeObjectURL(url), 2000); }
+let preparedComparison = null;
+$('#comparison-form').addEventListener('submit', async event => {
+  event.preventDefault(); error('');
+  const status = $('#comparison-status'), files = [...$('#comparison-files').files], reference = $('#comparison-references').files[0];
+  preparedComparison = null;
+  document.querySelectorAll('[data-comparison-export]').forEach(button => { button.disabled = true; });
+  if (state.mode !== 'real' || !state.connected) { status.textContent = 'Use Local benchmark with the engine connected first.'; return; }
+  if (!files.length || files.length > 12 || [...files, ...(reference ? [reference] : [])].some(file => file.size > 8 * 1024 * 1024) || files.reduce((total, file) => total + file.size, reference?.size || 0) > 23 * 1024 * 1024) { status.textContent = 'Choose 1–12 JSON reports, at most 8 MiB per file and 23 MiB of file content in total.'; return; }
+  $('#comparison-build').disabled = true; status.textContent = 'Checking saved measurements and building readable tables and charts…';
+  try {
+    const reports = await Promise.all(files.map(async file => JSON.parse(await file.text())));
+    const references = reference ? JSON.parse(await reference.text()) : [];
+    preparedComparison = await api.compareReports({reports, references, title: $('#comparison-title').value.trim()});
+    document.querySelectorAll('[data-comparison-export]').forEach(button => { button.disabled = false; });
+    status.textContent = `${preparedComparison.report.measured_rows.length} measured profiles and ${preparedComparison.report.references.length} published references prepared. Save the comparison files below. Published conditions are not assumed identical.`;
+  } catch (cause) { status.textContent = 'Comparison was not prepared.'; error(describeError(cause)); }
+  finally { $('#comparison-build').disabled = false; }
+});
+document.querySelectorAll('[data-comparison-export]').forEach(button => button.addEventListener('click', () => {
+  if (!preparedComparison) return;
+  const format = button.dataset.comparisonExport;
+  const content = format === 'json' ? JSON.stringify(preparedComparison.report, null, 2) : preparedComparison[format];
+  download(`EdgeLens-comparison.${format}`, content, {html:'text/html;charset=utf-8',json:'application/json',csv:'text/csv;charset=utf-8'}[format]);
+}));
 async function exportReport(format) {
   if (!state.report) return;
   if (state.mode === 'real') {

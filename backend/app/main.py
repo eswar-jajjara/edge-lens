@@ -30,7 +30,7 @@ def create_app(settings: Settings | None = None, *, runner=None, capability_prov
             application.state.validation.close()
 
     application = FastAPI(
-        title="EdgeLens API", version="0.9.1", lifespan=lifespan,
+        title="EdgeLens API", version="0.10.0", lifespan=lifespan,
         description="Image classification conversion benchmarks and persistent layer reports.",
         docs_url="/api/docs" if config.environment == "development" else None,
         redoc_url=None,

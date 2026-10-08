@@ -1,5 +1,27 @@
 # Verification — EdgeLens
 
+## Readable reports and framework comparisons — source version 0.10.0
+
+- Backend: **103 passed, 1 optional pretrained-download test skipped** with
+  `EDGELENS_TEST_CUSTOM=1`; frontend: **18 passed**. Syntax/assets/build pass.
+  Eight reporting tests cover escaping, raw precision, missing chart values,
+  matched-dataset accuracy deltas, FP32 baseline fallback, reference validation,
+  legacy runtime naming without fabricated hash links, CSV formula protection
+  and the local comparison API without history writes.
+- A saved real Phase 2 report was rendered as offline HTML and combined with
+  primary-source references into HTML/CSV/JSON. These are reformatted existing
+  measurements, not a fresh accuracy or timing experiment. Published values
+  remain REFERENCE; missing values remain UNAVAILABLE.
+- Native Electron starts successfully on this laptop. The new comparison
+  panel, file controls and export buttons were visually checked. The automation
+  could not operate its owned Windows file dialog, so a complete native
+  select/prepare/download interaction still requires the manual Test 13.
+  Browser restrictions also prevented a visual check of the exported HTML.
+- The updated local portable engine/UI match the source and built assets.
+  No new public portable ZIP was released by this source update. Use the
+  current source or updated local portable folder, not an older release ZIP.
+- See [the full test and final-report pathway](FINAL-COMPARISON-WORKFLOW.md).
+
 ## ONNX Edge Impulse integration — source version 0.9.1
 
 - Mock-provider transport/workflow contracts pass: exact ONNX multipart bytes and

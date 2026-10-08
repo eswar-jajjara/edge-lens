@@ -1,6 +1,14 @@
-# EdgeLens — Deployment Validation Tool 0.9.1
+# EdgeLens — Deployment Validation Tool 0.10.0
 
 A Windows desktop developer tool for validating image-classifier conversion and investigating edge readiness with separately labelled provider estimates. Electron starts a private local Python engine automatically; SQLite stores models, datasets, metrics, layer findings and reports. Model binaries stay on disk with SHA256 metadata in SQLite.
+
+**New in 0.10.0:** readable offline reports with compact tables, aligned numbers,
+accuracy/latency/size charts and expandable technical evidence. **Reports &
+history → Compare saved results and published references** combines measured
+PyTorch/ONNX/TFLite JSON exports with separately labelled internet references.
+Follow [the complete testing and final-report pathway](docs/FINAL-COMPARISON-WORKFLOW.md)
+and use [the checked reference starter](docs/reference-examples.json).
+Published conditions are not assumed identical; unknown values stay unavailable.
 
 **New in 0.9.1:** profile evaluated ONNX files through Edge Impulse’s BYOM workflow. Upload and profiling jobs are saved separately; provider-converted accuracy remains unavailable. See [the ONNX walkthrough](docs/EDGE-IMPULSE-ONNX.md).
 

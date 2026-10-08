@@ -1,4 +1,5 @@
 from pathlib import Path
+import json
 from zipfile import BadZipFile
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import Response, FileResponse
@@ -8,6 +9,29 @@ from app.services.reports import report_csv, report_html
 from app.services.evidence import diagnostic_groups, evidence_sections
 
 router = APIRouter()
+
+
+@router.post('/reports/comparison')
+async def create_comparison(request: Request):
+    if not request.app.state.config.allow_custom_models:
+        raise HTTPException(403, 'Report comparison is available in the local developer tool.')
+    chunks, size = [], 0
+    async for chunk in request.stream():
+        size += len(chunk)
+        if size > 24 * 1024 * 1024:
+            raise HTTPException(413, 'Comparison input exceeds 24 MiB. Select fewer exported reports.')
+        chunks.append(chunk)
+    from app.services.report_comparison import build_comparison, comparison_html, comparison_csv
+    try:
+        payload = json.loads(b''.join(chunks), parse_constant=lambda _: (_ for _ in ()).throw(ValueError('Non-finite input')))
+        if not isinstance(payload, dict) or set(payload) - {'reports', 'references', 'title'}:
+            raise ValueError('Use reports, optional references and an optional title.')
+        result = build_comparison(payload.get('reports'), payload.get('references'), payload.get('title', 'EdgeLens conversion comparison'))
+        return {'report': result, 'html': comparison_html(result), 'csv': comparison_csv(result)}
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    except (KeyError, TypeError, AttributeError):
+        raise HTTPException(422, 'Use original measured EdgeLens report exports and the documented reference JSON format.') from None
 
 
 @router.post('/diagnostics/self-test', status_code=201)
