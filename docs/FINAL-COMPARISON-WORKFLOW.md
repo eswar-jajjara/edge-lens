@@ -50,6 +50,13 @@ weights-only `.pth` needs the matching architecture before you export trusted
 accepts `.pt2`, single-file `.onnx` and `.tflite` with one fixed batch-one image
 input and one class-score output.
 
+On Eswar's laptop, `.cache/imagenet-mobilenet-v2/preparation-manifest.json`
+identifies ImageNet-1K validation images and V2 weights, with 100/100/500 disjoint
+calibration/validation/test images. Its PNGs are already officially resized and
+cropped; use the saved `spec.json` (resize to input dimensions), not a second
+crop or a preset that transforms them again. Follow the exact file/settings
+instructions in [the reviewer walkthrough](REVIEWER-TEST-WALKTHROUGH.md).
+
 Choose either V1 or V2 deliberately. The [official model page](https://docs.pytorch.org/vision/stable/models/generated/torchvision.models.mobilenet_v2.html)
 reports 71.878% for V1 and 72.154% for V2 on its ImageNet evaluation. V1 resizes the
 shorter side to 256, V2 to 232; both centre-crop to 224. DEFAULT identifies V2.
@@ -215,11 +222,13 @@ tools lack diagnostics. EdgeLens's contribution is its combined validation,
 selection, provenance and developer report workflow; numerical gains must be
 measured independently.
 
-Your earlier 500-image ImageNet-V2 run reported PyTorch/FP32 69.2% and initial
+Your earlier 500-image saved run reported PyTorch/FP32 69.2% and initial
 INT8 58.8%. Its validation constraints selected FP32. That supports accuracy
 preservation through constraint handling, with the size trade-off stated. The
 earlier 10-sample timing needs fresh repeats before a final latency claim. A
 synthetic classifier's 100% accuracy verifies plumbing, not real-world quality.
+Verify each earlier report's original dataset provenance rather than inferring
+ImageNetV2 from a model/weights filename; do not merge different subsets.
 
 Finish with a table of **where it improved, where it tied, where it lost and
 where evidence is unavailable**. Use your actual numbers to decide those cells.

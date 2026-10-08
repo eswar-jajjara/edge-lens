@@ -2,6 +2,21 @@
   "references": [
     {
       "framework": "PyTorch / TorchVision",
+      "model": "MobileNetV2 IMAGENET1K_V2",
+      "weights": "MobileNet_V2_Weights.IMAGENET1K_V2",
+      "dataset": "ImageNet-1K validation (published complete evaluation)",
+      "accuracy_pct": 72.154,
+      "latency_p50_ms": null,
+      "size_bytes": null,
+      "published_size": "13.6 MB (rounded checkpoint size reported by TorchVision)",
+      "preprocessing": "RGB; bilinear shorter-side resize 232; centre crop 224; scale 1/255; mean [0.485,0.456,0.406]; std [0.229,0.224,0.225]",
+      "hardware": "Latency not supplied by this source",
+      "source_url": "https://docs.pytorch.org/vision/stable/models/generated/torchvision.models.mobilenet_v2.html",
+      "accessed_at": "2026-10-08",
+      "notes": "REFERENCE only. These are the weights in the prepared local imagenet-mobilenet-v2 fixture. Its manifest identifies ImageNet-1K validation images, already spatially transformed and saved losslessly as PNG. A 500-image subset is not the published complete evaluation. Checkpoint MB are not PT2 export bytes."
+    },
+    {
+      "framework": "PyTorch / TorchVision",
       "model": "MobileNetV2 IMAGENET1K_V1",
       "weights": "MobileNet_V2_Weights.IMAGENET1K_V1",
       "dataset": "ImageNet-1K validation (published complete evaluation)",

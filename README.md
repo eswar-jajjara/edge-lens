@@ -32,6 +32,8 @@ The older [Windows x64 portable ZIP v0.4.1](https://github.com/eswar-jajjara/edg
 
 For a feature-by-feature explanation and a complete test sequence without an ESP32, follow [manual software tests](docs/MANUAL-SOFTWARE-TESTS.md).
 
+For your project review, follow [the reviewer test walkthrough](docs/REVIEWER-TEST-WALKTHROUGH.md): every software check, the prepared 500-image ImageNet-1K/MobileNetV2 V2 experiment on this laptop, published references and the evidence folder to present.
+
 ## Features
 
 - Upload your own `.pt2`, single-file `.onnx` or `.tflite` image classifier with preprocessing and class-count settings. Supported signatures are fixed batch-one, one image input and one class-score output. Only load trusted exports; this is not an untrusted-model sandbox.
