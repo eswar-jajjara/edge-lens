@@ -113,7 +113,7 @@ class ONNXAPITests(unittest.TestCase):
         job = self.onnx_run()
         with patch('app.services.edge_impulse.job_finished', return_value=True), \
                 patch('app.services.edge_impulse.pretrained_model', return_value=self.model_response()), \
-                patch('app.services.edge_impulse.start_pretrained_profile', side_effect=ValueError('Could not reach Edge Impulse securely')) as start:
+                patch('app.services.edge_impulse.start_pretrained_profile', side_effect=edge_impulse.ProviderSubmissionError('Could not confirm the Edge Impulse response.', outcome='unknown')) as start:
             self.assertEqual(self.refresh(job).status_code, 502)
             self.assertEqual(self.refresh(job).status_code, 502)
             start.assert_called_once()

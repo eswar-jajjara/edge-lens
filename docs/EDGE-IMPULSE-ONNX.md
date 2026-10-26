@@ -32,7 +32,7 @@ The uploaded filename includes the ONNX SHA-256. The request supplies the same f
 
 ONNX acceptance depends on Edge Impulse's supported operations, conversion tools, target and account access. **INT8 QDQ acceptance is not yet live-verified**. FP32 is a useful first probe. Provider failures do not become benchmark successes, and ONNX artifacts are still rejected by the TFLite-only firmware-package endpoint.
 
-An upload/profile POST timeout may mean Studio accepted the job but EdgeLens lost its receipt. The tool records this ambiguity and never automatically resends that POST, including after restarting. Check Studio before explicitly uploading again. A Read-only or unavailable project key can return 403; use the project's Read + Write key inside the tool, never in a report or chat.
+A transport failure, server error, or malformed success receipt may mean Studio accepted a POST but EdgeLens lost its receipt. The tool records that ambiguity and never automatically resends the POST, including after restarting. Explicit HTTP 4xx responses and provider-declared rejections are recorded as failed instead of unknown; local validation failures are also recorded as failed. Check Studio before explicitly uploading again after an ambiguous response. A Read-only or unavailable project key can return 403; use the project's Read + Write key inside the tool, never in a report or chat.
 
 ## Verification scope
 

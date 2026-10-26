@@ -54,8 +54,12 @@ def advance(repository, job, key):
             repository.update_edge_record(job["id"], {"phase": "profile_submitting", "provider_identity_sha256": identity})
             try:
                 profile_id = edge_impulse.start_pretrained_profile(job["project_id"], key)
+            except edge_impulse.ProviderSubmissionError as exc:
+                phase = "profile_unknown" if exc.outcome == "unknown" else "failed"
+                repository.update_edge_record(job["id"], {"phase": phase})
+                raise
             except ValueError:
-                repository.update_edge_record(job["id"], {"phase": "profile_unknown"})
+                repository.update_edge_record(job["id"], {"phase": "failed"})
                 raise
             job = repository.update_edge_record(job["id"], {"phase": "profiling", "profile_job_id": profile_id})
             raise ProfilePending("The job may still be running; the ONNX-derived profiling job was submitted. Fetch its estimate after processing finishes.")
