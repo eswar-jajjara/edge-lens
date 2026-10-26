@@ -9,6 +9,16 @@ import httpx
 BASE = "https://studio.edgeimpulse.com/v1/api"
 
 
+class ProviderSubmissionError(ValueError):
+    """A confirmed provider rejection or an ambiguous submission response."""
+
+    def __init__(self, message, *, outcome):
+        if outcome not in {"rejected", "unknown"}:
+            raise ValueError("Invalid provider submission outcome")
+        self.outcome = outcome
+        super().__init__(message)
+
+
 def redact_response(value, key):
     """Preserve provider response structure with credentials/request bytes removed."""
     forbidden = {"apikey", "xapikey", "authorization", "password", "token", "secret", "tflitefilebase64", "onnxfilebase64", "modelfile", "modelbytes", "representativefeatures"}
@@ -23,24 +33,41 @@ def redact_response(value, key):
 
 
 def call_api(method, path, key, body=None, *, files=None, data=None):
+    is_submission = method.upper() == "POST"
     try:
         with httpx.Client(timeout=45, follow_redirects=False) as client:
             response = client.request(method, BASE + path, headers={"x-api-key": key}, json=body, files=files, data=data)
-        if response.status_code != 200:
-            raise ValueError(f"Edge Impulse returned HTTP {response.status_code}. Check the project, key and profiling access.")
+        if not 200 <= response.status_code < 300:
+            message = f"Edge Impulse returned HTTP {response.status_code}. Check the project, key and profiling access."
+            if is_submission:
+                outcome = "unknown" if response.status_code >= 500 else "rejected"
+                raise ProviderSubmissionError(message, outcome=outcome)
+            raise ValueError(message)
         if len(response.content) > 2 * 1024 * 1024:
+            if is_submission:
+                raise ProviderSubmissionError("Edge Impulse returned an oversized submission receipt.", outcome="unknown")
             raise ValueError("Edge Impulse response exceeds the size limit")
         try:
             result = response.json()
         except ValueError as exc:
+            if is_submission:
+                raise ProviderSubmissionError("Edge Impulse returned an invalid submission receipt.", outcome="unknown") from exc
             raise ValueError("Edge Impulse returned an invalid JSON response") from exc
         if not isinstance(result, dict) or result.get("success") is not True:
             # Never return arbitrary remote error strings that could echo credentials.
+            if is_submission:
+                raise ProviderSubmissionError("Edge Impulse explicitly rejected the submission.", outcome="rejected")
             raise ValueError("Edge Impulse did not return a successful result. The job may still be running; check Studio and retry.")
-        return redact_response(result, key)
+        try:
+            return redact_response(result, key)
+        except ValueError as exc:
+            if is_submission:
+                raise ProviderSubmissionError("Edge Impulse returned an invalid submission receipt.", outcome="unknown") from exc
+            raise
     except httpx.HTTPError as exc:
+        if is_submission:
+            raise ProviderSubmissionError("Could not confirm the Edge Impulse response. The submission may have been accepted; check Studio before retrying.", outcome="unknown") from exc
         raise ValueError("Could not reach Edge Impulse securely. Check network access and try again.") from exc
-
 
 def start_profile(path: Path, project_id: int, device: str, key: str, *, expected_sha256=None, model_format="tflite", input_shape=None):
     if model_format not in {"tflite", "onnx"}:
@@ -64,6 +91,8 @@ def start_profile(path: Path, project_id: int, device: str, key: str, *, expecte
         result = call_api("POST", f"/{project_id}/jobs/profile-tflite", key,
                           {"tfliteFileBase64": base64.b64encode(content).decode("ascii"), "device": device})
     if type(result.get("id")) is not int:
+        if model_format == "onnx":
+            raise ProviderSubmissionError("Edge Impulse returned no upload job ID; the submission receipt is incomplete.", outcome="unknown")
         raise ValueError("Edge Impulse returned no job ID")
     return result["id"]
 
@@ -91,7 +120,7 @@ def pretrained_model(project_id, key):
 def start_pretrained_profile(project_id, key):
     result = call_api("POST", f"/{project_id}/pretrained-model/profile", key)
     if type(result.get("id")) is not int:
-        raise ValueError("Edge Impulse returned no profiling job ID")
+        raise ProviderSubmissionError("Edge Impulse returned no profiling job ID; the submission receipt is incomplete.", outcome="unknown")
     return result["id"]
 
 
