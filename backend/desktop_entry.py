@@ -35,7 +35,12 @@ def create_desktop_app(config, frontend_dir: Path, token: str, origin: str):
 
     @application.get("/config.js", include_in_schema=False)
     def desktop_config():
-        return Response("window.EDGELENS_CONFIG = Object.freeze({apiBaseUrl:'/api/v1',desktop:true});", media_type="application/javascript")
+        data_dir = json.dumps(str(config.data_dir))
+        first_run = "true" if os.environ.get("EDGELENS_FIRST_RUN") == "1" else "false"
+        return Response(
+            f"window.EDGELENS_CONFIG = Object.freeze({{apiBaseUrl:'/api/v1',desktop:true,dataDir:{data_dir},firstRun:{first_run}}});",
+            media_type="application/javascript",
+        )
 
     application.mount("/", StaticFiles(directory=Path(frontend_dir).resolve(), html=True), name="desktop-ui")
     return application

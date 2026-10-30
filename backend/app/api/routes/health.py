@@ -11,6 +11,12 @@ def health() -> dict:
 @router.get("/capabilities")
 def capabilities(request: Request) -> dict:
     runtimes = request.app.state.capability_provider()
+    # Expose WSL TFLite conversion status so the UI can show accurate guidance.
+    try:
+        from app.services.tflite_conversion import wsl_status
+        wsl = wsl_status()
+    except Exception:
+        wsl = {"available": False, "reason": "WSL status check failed."}
     return {
         "model_execution": any(item.get("available", False) for item in runtimes.values()),
         "artifact_uploads": True, "persistent_runs": True, "runtimes": runtimes,
@@ -21,6 +27,7 @@ def capabilities(request: Request) -> dict:
         "imported_tflite_execution": __import__("importlib.util", fromlist=["find_spec"]).find_spec("ai_edge_litert") is not None,
         "hardware_benchmarks": True,
         "supported_uploads": ["pt2", "onnx", "tflite"],
+        "wsl_tflite": wsl,
         "precision_experiments": {"strategies": ["fp32_static_int8"], "sources": ["pt2", "fp32_onnx"],
                                   "dataset_roles": ["calibration", "validation", "test"], "max_candidates": 2,
                                   "automatic_selection": False},

@@ -14,7 +14,7 @@
     "dev": "node scripts/dev.mjs",
     "build": "node scripts/build.mjs",
     "check": "node scripts/check.mjs",
-    "test": "node --test tests/frontend.test.mjs",
+    "test": "node --test",
     "desktop": "npm run build && electron .",
     "desktop:smoke": "npm run build && electron . --smoke-test",
     "desktop:engine": "backend\\.venv\\Scripts\\python.exe scripts/prepare-engine.py",

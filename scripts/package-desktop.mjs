@@ -1,4 +1,5 @@
-// Electron's documented manual distribution layout; no installer or signing step.
+// Assemble an optional relocatable app payload. Teammates use the source launcher;
+// this script does not create a setup installer.
 import { cp, mkdir, readFile, copyFile, unlink, writeFile, stat, realpath, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -33,7 +34,14 @@ await cp(engine, path.join(resources, 'engine'), { recursive: true });
 await cp(path.join(root, 'dist'), path.join(resources, 'ui'), { recursive: true });
 await cp(path.join(root, 'docs'), path.join(output, 'docs'), { recursive: true });
 await copyFile(path.join(root, 'desktop', 'icon.ico'), path.join(resources, 'icon.ico'));
-await writeFile(path.join(output, 'READ ME.txt'), `EdgeLens ${source.version} — Model Conversion Studio\r\n\r\nWindows 10/11 x64. Extract this entire folder, then double-click EdgeLens.exe.\r\nKeep all supporting files together. Python, Node.js and a GPU are not needed separately.\r\nCPU PyTorch/ONNX, LiteRT inference and USB serial support are included.\r\nIf startup fails, double-click check-runtime.cmd and read docs/TEAM-SETUP.md.\r\nUpload your own trusted PT2, ONNX or TFLite classifier. Sample presets may download pretrained weights.\r\nYour data is saved separately in %APPDATA%\\EdgeLens\\data on this laptop.\r\nLatency differs between computers. TFLite conversion needs an optional Linux worker.\r\nThis is an unsigned portable prototype, not a signed installer.\r\n`);
+await writeFile(path.join(output, 'READ ME.txt'), `EdgeLens ${source.version} — Model Conversion Studio\r\n\r\nWindows 10/11 x64. Extract this entire folder, then double-click EdgeLens.exe.\r\nKeep all supporting files together. Python, Node.js and a GPU are not needed separately.\r\nCPU PyTorch/ONNX, LiteRT inference and USB serial support are included.\r\nIf startup fails, double-click check-runtime.cmd and read docs/TEAM-SETUP.md.\r\nUpload your own trusted PT2, ONNX or TFLite classifier. Sample presets may download pretrained weights.\r\nYour data is saved separately in %APPDATA%\\EdgeLens\\data on this laptop.\r\nLatency differs between computers. TFLite conversion needs an optional Linux worker.\r\nCode signing is not configured; Windows may show a SmartScreen warning for an unknown publisher.\r\n`);
+await writeFile(path.join(output, 'release-info.json'), JSON.stringify({
+  version: source.version,
+  architecture: 'Windows x64',
+  data_location: '%APPDATA%/EdgeLens/data',
+  source_url: 'https://github.com/eswar-jajjara/edge-lens',
+  source_commit: process.env.GITHUB_SHA || null,
+}, null, 2) + '\n');
 await writeFile(path.join(output, 'check-runtime.cmd'), [
   '@echo off', 'setlocal', 'cd /d "%~dp0"',
   'set "PYTHONHOME=%~dp0resources\\engine"', 'set "PYTHONPATH="',

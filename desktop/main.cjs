@@ -9,6 +9,7 @@ const isSmoke = process.argv.includes('--smoke-test');
 const root = path.resolve(__dirname, '..');
 app.setName('EdgeLens');
 if (process.env.EDGELENS_DESKTOP_DATA) app.setPath('userData', process.env.EDGELENS_DESKTOP_DATA);
+const firstRunCompletePath = path.join(app.getPath('userData'), 'environment-check.complete');
 if (!app.requestSingleInstanceLock()) app.quit();
 else {
   app.on('second-instance', () => { if (mainWindow) { if (mainWindow.isMinimized()) mainWindow.restore(); mainWindow.focus(); } });
@@ -28,7 +29,7 @@ function launchEngine(token) {
   if (!fs.existsSync(python) || !fs.existsSync(path.join(ui, 'index.html'))) throw new Error('The local Python engine or interface is missing. Run the project setup and build commands.');
   const dataDir = path.join(app.getPath('userData'), 'data');
   fs.mkdirSync(dataDir, { recursive: true });
-  const environment = { ...process.env, APP_ENV: 'production', EDGELENS_ALLOW_CUSTOM_MODELS: '1', CORS_ORIGINS: '', EDGELENS_DATA_DIR: dataDir, EDGELENS_DESKTOP_TOKEN: token, TORCH_HOME: path.join(dataDir, 'weights'), PYTHONUTF8: '1', PYTHONUNBUFFERED: '1' };
+  const environment = { ...process.env, APP_ENV: 'production', EDGELENS_ALLOW_CUSTOM_MODELS: '1', CORS_ORIGINS: '', EDGELENS_DATA_DIR: dataDir, EDGELENS_DESKTOP_TOKEN: token, EDGELENS_FIRST_RUN: fs.existsSync(firstRunCompletePath) ? '0' : '1', TORCH_HOME: path.join(dataDir, 'weights'), PYTHONUTF8: '1', PYTHONUNBUFFERED: '1' };
   delete environment.PYTHONPATH;
   delete environment.PYTHONHOME;
   if (app.isPackaged) environment.PYTHONHOME = engineDir;
@@ -66,6 +67,18 @@ async function start() {
     if (event.sender !== mainWindow.webContents || event.senderFrame !== mainWindow.webContents.mainFrame || new URL(event.senderFrame.url).origin !== origin) throw new Error('Untrusted sign-in request');
     return shell.openExternal('https://studio.edgeimpulse.com/');
   });
+  ipcMain.handle('edgelens:complete-first-run', event => {
+    if (event.sender !== mainWindow.webContents || event.senderFrame !== mainWindow.webContents.mainFrame || new URL(event.senderFrame.url).origin !== origin) throw new Error('Untrusted setup acknowledgement');
+    fs.mkdirSync(path.dirname(firstRunCompletePath), { recursive: true });
+    const pendingPath = `${firstRunCompletePath}.${process.pid}.${randomBytes(4).toString('hex')}.tmp`;
+    try {
+      fs.writeFileSync(pendingPath, `${new Date().toISOString()}\n`, { flag: 'wx' });
+      fs.renameSync(pendingPath, firstRunCompletePath);
+    } finally {
+      if (fs.existsSync(pendingPath)) fs.unlinkSync(pendingPath);
+    }
+    return true;
+  });
   mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   mainWindow.webContents.on('will-navigate', (event, url) => { if (new URL(url).origin !== origin) event.preventDefault(); });
   mainWindow.webContents.on('will-attach-webview', event => event.preventDefault());
@@ -92,8 +105,22 @@ async function start() {
     const capabilities = await response.json();
     const page = await mainWindow.webContents.executeJavaScript('({title:document.title,desktop:window.EDGELENS_CONFIG.desktop,heading:document.querySelector("h1").textContent,precisionControls:Boolean(document.querySelector("#run-strategy option[value=quantization_compare]")),validationControl:Boolean(document.querySelector("#validation-select")),deploymentControls:Boolean(document.querySelector("#deployment-controls")),deploymentStrategy:Boolean(document.querySelector("#run-strategy option[value=deployment_search]")),evidenceFilters:Boolean(document.querySelector("#layer-candidate") && document.querySelector("#layer-view") && document.querySelector("#more-layers")),profileTargets:Boolean(document.querySelector("#load-ei-targets") && document.querySelector("#ei-consent"))})');
     const integration = await mainWindow.webContents.executeJavaScript('({providerPage:Boolean(document.querySelector("[data-page=impulse]") && document.querySelector("#impulse-page")),browserLogin:typeof window.EdgeLensDesktop?.signInEdgeImpulse === "function",estimateChoice:document.querySelectorAll("input[name=edge-estimate]").length === 2,projectSelector:Boolean(document.querySelector("#test-ei-project") && document.querySelector("#ei-run"))})');
+    const firstRunCheck = await mainWindow.webContents.executeJavaScript(`new Promise(resolve => { const deadline = Date.now() + 15000; const check = () => { const dialog = document.querySelector('#first-run-dialog'); if (!dialog || dialog.dataset.checksReady === 'true' || Date.now() >= deadline) { resolve(dialog ? {open:dialog.open, ready:dialog.dataset.checksReady === 'true', engine:document.querySelector('#first-run-engine')?.textContent, dataDir:document.querySelector('#first-run-data-dir')?.textContent, worker:document.querySelector('#first-run-tflite')?.textContent, instructions:document.querySelector('#first-run-tflite-help')?.textContent} : null); return; } setTimeout(check, 100); }; check(); })`);
+    const expectedFirstRun = !fs.existsSync(firstRunCompletePath);
+    if (!firstRunCheck || !firstRunCheck.ready || firstRunCheck.open !== expectedFirstRun || !firstRunCheck.engine?.includes(expectedFirstRun ? 'Ready' : 'completed') || !firstRunCheck.dataDir || !firstRunCheck.worker || !firstRunCheck.instructions.includes('WSL')) throw new Error('First-run environment check did not report the engine, data folder and optional TFLite worker.');
+    if (expectedFirstRun) {
+      const acknowledged = await mainWindow.webContents.executeJavaScript('window.EdgeLensDesktop.completeFirstRun()');
+      if (!acknowledged || !fs.existsSync(firstRunCompletePath)) throw new Error('First-run acknowledgement was not saved for this user.');
+    }
     if (!page.desktop || !page.precisionControls || !page.validationControl || !page.deploymentControls || !page.deploymentStrategy || !page.evidenceFilters || !page.profileTargets || !capabilities.deployment_search?.available || Object.values(integration).some(value => !value)) throw new Error('Desktop deployment controls, provider connection or local engine capabilities are missing.');
-    console.log(JSON.stringify({ desktop_smoke: 'passed', capabilities, page, integration }));
+    const smokeResult = { desktop_smoke: 'passed', capabilities, page, integration, first_run_check: expectedFirstRun ? 'passed-and-acknowledged' : 'already-completed' };
+    const smokeJson = `${JSON.stringify(smokeResult)}\n`;
+    console.log(smokeJson.trimEnd());
+    if (process.env.EDGELENS_SMOKE_RESULT) {
+      const resultPath = path.resolve(process.env.EDGELENS_SMOKE_RESULT);
+      fs.mkdirSync(path.dirname(resultPath), { recursive: true });
+      fs.writeFileSync(resultPath, smokeJson, 'utf8');
+    }
     shuttingDown = true; app.quit();
   } else mainWindow.show();
 }

@@ -24,15 +24,20 @@ def _json(value: Any) -> str:
 class Repository:
     """A single-instance prototype repository backed by edgelens.sqlite3."""
 
+    schema_version = 4
+
     def __init__(self, data_dir: Path):
         self.data_dir = Path(data_dir).resolve()
         self.data_dir.mkdir(parents=True, exist_ok=True)
         self.db_path = self.data_dir / "edgelens.sqlite3"
+        database_existed = self.db_path.is_file()
         with self._connection() as connection:
-            connection.execute("PRAGMA journal_mode=WAL")
             version = connection.execute("PRAGMA user_version").fetchone()[0]
-            if version > 4:
+            if version > self.schema_version:
                 raise RuntimeError("This database was created by a newer EdgeLens version; upgrade the application.")
+            if database_existed and version < self.schema_version:
+                self._backup_before_migration(connection, version)
+            connection.execute("PRAGMA journal_mode=WAL")
             migrations = Path(__file__).parent / "migrations"
             migration = "".join((migrations / filename).read_text(encoding="utf-8") + "\n"
                                 for threshold, filename in ((2, "002_developer_models.sql"), (3, "003_precision_experiments.sql"), (4, "004_deployment_search.sql"))
@@ -73,6 +78,20 @@ class Repository:
                 );
 
             """ + migration + "\nCOMMIT;")
+
+    def _backup_before_migration(self, connection: sqlite3.Connection, version: int) -> Path:
+        """Take a verified SQLite snapshot before applying any schema migration."""
+        stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S.%fZ")
+        backup_path = self.data_dir / f"edgelens.sqlite3.pre-migration-v{version}-to-v{self.schema_version}-{stamp}.bak"
+        backup = sqlite3.connect(backup_path)
+        try:
+            connection.backup(backup)
+            result = backup.execute("PRAGMA quick_check").fetchone()
+            if not result or result[0] != "ok":
+                raise RuntimeError(f"The pre-migration database backup failed integrity checking: {backup_path}")
+        finally:
+            backup.close()
+        return backup_path
 
     @contextmanager
     def _connection(self):

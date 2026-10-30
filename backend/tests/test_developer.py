@@ -251,5 +251,53 @@ class DeveloperUnitTests(unittest.TestCase):
         finally:
             if root.exists(): shutil.rmtree(root)
 
+    def test_schema_migration_keeps_a_verified_pre_migration_backup(self):
+        root = Path(__file__).resolve().parents[1] / 'data' / ('migration_backup_' + uuid4().hex)
+        try:
+            repo = Repository(root)
+            run = repo.create_run({'model_id': 'backup-check'})
+            repo.update_run(run['id'], 'completed', report={'metrics': [], 'layers': [], 'artifacts': []})
+            with closing(sqlite3.connect(repo.db_path)) as connection, connection:
+                connection.execute('DROP TABLE sensitivity_results')
+                connection.execute('DROP TABLE deployment_selections')
+                connection.execute('PRAGMA user_version=3')
+
+            migrated = Repository(root)
+            backups = list(root.glob('edgelens.sqlite3.pre-migration-v3-to-v4-*.bak'))
+            self.assertEqual(len(backups), 1)
+            with closing(sqlite3.connect(backups[0])) as backup:
+                self.assertEqual(backup.execute('PRAGMA quick_check').fetchone()[0], 'ok')
+                self.assertEqual(backup.execute('PRAGMA user_version').fetchone()[0], 3)
+                tables = {row[0] for row in backup.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+                self.assertNotIn('deployment_selections', tables)
+                self.assertEqual(backup.execute('SELECT id FROM runs').fetchone()[0], run['id'])
+            with closing(sqlite3.connect(migrated.db_path)) as database:
+                self.assertEqual(database.execute('PRAGMA user_version').fetchone()[0], 4)
+                self.assertEqual(database.execute('SELECT id FROM runs').fetchone()[0], run['id'])
+        finally:
+            if root.exists(): shutil.rmtree(root)
+
+    def test_newer_schema_is_refused_without_modifying_database(self):
+        root = Path(__file__).resolve().parents[1] / 'data' / ('newer_schema_' + uuid4().hex)
+        root.mkdir(parents=True)
+        database_path = root / 'edgelens.sqlite3'
+        try:
+            with closing(sqlite3.connect(database_path)) as connection, connection:
+                connection.execute('CREATE TABLE newer_app_data (value TEXT NOT NULL)')
+                connection.execute("INSERT INTO newer_app_data VALUES ('keep')")
+                connection.execute('PRAGMA user_version=5')
+                connection.execute('PRAGMA journal_mode=DELETE')
+
+            with self.assertRaisesRegex(RuntimeError, 'newer EdgeLens'):
+                Repository(root)
+
+            with closing(sqlite3.connect(database_path)) as connection:
+                self.assertEqual(connection.execute('PRAGMA user_version').fetchone()[0], 5)
+                self.assertEqual(connection.execute('PRAGMA journal_mode').fetchone()[0], 'delete')
+                self.assertEqual(connection.execute('SELECT value FROM newer_app_data').fetchone()[0], 'keep')
+            self.assertEqual(list(root.glob('*.bak')), [])
+        finally:
+            if root.exists(): shutil.rmtree(root)
+
 
 if __name__ == '__main__': unittest.main()

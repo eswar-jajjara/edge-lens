@@ -9,5 +9,5 @@ if errorlevel 1 (
   exit /b 1
 )
 echo.
-echo Setup complete. Double-click start-desktop.cmd to open EdgeLens.
+echo Setup complete. Double-click run-edgelens.cmd to open EdgeLens.
 pause

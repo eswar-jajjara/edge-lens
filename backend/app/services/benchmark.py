@@ -52,12 +52,35 @@ def runtime_capabilities() -> dict:
         "tflite": base + ["litert_torch", "ai_edge_litert"],
     }.items():
         missing = [name for name in dependencies if not _present(name)]
+        # On Windows, PT2→TFLite is also available via the pinned WSL worker
+        # even when litert-torch is not installed natively on Windows.
+        if format_name == "tflite" and platform.system() == "Windows":
+            try:
+                from app.services.tflite_conversion import wsl_status
+                wsl = wsl_status()
+            except Exception:
+                wsl = {"available": False, "reason": "Could not check WSL status."}
+            if wsl.get("available"):
+                output[format_name] = {
+                    "available": True, "missing": [],
+                    "reason": "PT2 → TFLite via local WSL worker is ready.",
+                    "wsl": wsl,
+                }
+                continue
+            # WSL not yet configured -- report native deps + actionable WSL hint
+            output[format_name] = {
+                "available": False,
+                "missing": missing,
+                "reason": wsl.get("reason", "WSL TFLite worker not available."),
+                "wsl": wsl,
+            }
+            continue
         supported = format_name != "tflite" or platform.system() == "Linux"
         reason = "Dependencies detected; model execution has not been tested."
         if not supported:
             reason = "LiteRT Torch conversion requires a Linux worker; use Python 3.11."
         elif missing:
-            reason = f"Install requirements-{ 'ml' if format_name == 'onnx' else 'tflite' }.txt in the backend environment."
+            reason = f"Install requirements-{'ml' if format_name == 'onnx' else 'tflite'}.txt in the backend environment."
         output[format_name] = {"available": not missing and supported, "missing": missing, "reason": reason}
     return output
 

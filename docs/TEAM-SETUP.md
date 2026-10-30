@@ -1,150 +1,69 @@
-# Set up EdgeLens 0.9.1 on a Windows teammate’s laptop
+# Set up EdgeLens 0.10.0 on a Windows teammate’s laptop
 
-EdgeLens is a desktop developer tool. It runs a private Python conversion and
-benchmark engine on your laptop, shows layer diagnostics, and stores experiments
-in local SQLite. It accepts exported image-classification models (PT2, single-file
-ONNX, TFLite) and labelled image ZIPs. Optional Edge Impulse profiling supplies
-target resource estimates; it does not simulate exact ESP32 measurements.
+EdgeLens is a desktop developer tool for image-classifier conversion and validation. It runs its Python engine locally, shows layer diagnostics and stores experiments in SQLite. It supports exported PT2, single-file ONNX and TFLite classifiers with labelled image datasets. Edge Impulse can provide separate target estimates; those estimates are not ESP32 measurements.
 
-## 1. Get the current GitHub source
+## Quick setup (no separate installer EXE)
 
-The repository is public: [eswar-jajjara/edge-lens](https://github.com/eswar-jajjara/edge-lens).
-Your teammate can view, clone or download it without an invitation. To contribute
-directly, they need a separate collaborator invitation from the owner, or can
-fork it and submit a pull request. Source access does not grant access to your
-private Edge Impulse account, models, datasets or saved experiments.
+EdgeLens is shared as source from [the public GitHub repository](https://github.com/eswar-jajjara/edge-lens). There is no separate EdgeLens setup executable to download. The Windows desktop runtime still includes Electron internally; the teammate setup uses the source launcher rather than an installer program.
 
-Use Windows 10/11 **x64**, not Windows on ARM for this tested setup. Install:
+Use Windows 10/11 x64. Install these once:
 
-- [Python 3.12 x64](https://www.python.org/downloads/windows/).
-- [Node.js 22.12+ x64](https://nodejs.org/en/download).
-- [Git for Windows](https://git-scm.com/downloads/win) if you want clone/update commands.
+- [Python 3.12 x64](https://www.python.org/downloads/windows/). Enable the Python launcher or add Python to PATH.
+- [Node.js 22.12 or later, x64](https://nodejs.org/en/download).
+- [Git for Windows](https://git-scm.com/downloads/win) only if you want to clone and update from a terminal.
 
-Restart your terminal after installation. Python 3.13/3.14 is not the tested
-runtime snapshot. A GPU and physical ESP32 are not required. Allow several GB
-of disk space and Internet access for the initial CPU runtime installation.
+No administrator access, GPU, ESP32 board or WSL installation is needed for setup and ONNX tests. Allow several GB of disk space and Internet access for the initial CPU PyTorch and npm downloads. Restart Windows Terminal after installing Python or Node.js.
 
-On GitHub choose **Code → Download ZIP**, extract it, and open the folder that
-contains `setup-windows.cmd`. Or use PowerShell:
+Get the source by either method:
 
-```powershell
-cd "$env:USERPROFILE\Documents"
-git clone https://github.com/eswar-jajjara/edge-lens.git
-cd edge-lens
-.\setup-windows.cmd
-.\start-desktop.cmd
-```
+1. On GitHub, choose **Code → Download ZIP**, extract it, and open the extracted `edge-lens` folder; or
+2. Open PowerShell and run:
 
-The repository can be on any writable drive. It does not depend on the author's
-`D:\projects` directory. Do not copy a teammate's `.venv` or `node_modules`.
+   ```powershell
+   cd "$env:USERPROFILE\Documents"
+   git clone https://github.com/eswar-jajjara/edge-lens.git
+   cd edge-lens
+   ```
 
-## 2. Install once, then open the tool
+Double-click **`run-edgelens.cmd`**. On the first launch it installs the pinned local dependencies, builds the interface and checks a small PT2-to-ONNX conversion; then it opens the desktop tool. This first setup can take several minutes. Next time, double-click the same file to open EdgeLens.
 
-1. Double-click **setup-windows.cmd**. It creates `backend\.venv`, installs the
-   pinned Python packages and npm lockfile, builds the interface and verifies a
-   tiny real PT2-to-ONNX conversion. The first setup can take time downloading
-   CPU PyTorch. Setup uses local dependencies and does not require a global
-   Python package installation.
-2. After setup succeeds, double-click **start-desktop.cmd**. It builds the current
-   interface and opens the Electron desktop window with its private engine.
-   Close older EdgeLens windows first: only one desktop instance is allowed.
-3. Use **check-windows.cmd** to verify the existing installation. The report is
-   `.cache\setup-report.json`; share the displayed error if setup fails.
+For separate steps, double-click `setup-windows.cmd` once and then `start-desktop.cmd`. `check-windows.cmd` checks an existing setup and writes a diagnostic report to `.cache\setup-report.json`. The setup script creates `backend\.venv` inside this project, uses the npm lockfile and does not change the computer’s PowerShell execution policy. It does not install Python packages globally.
 
-If Python 3.12 is not found, run:
+Keep the source checkout in any writable folder, including a path with spaces. Do not copy another person’s `.venv` or `node_modules`; each laptop creates its own. If Python 3.12 is not detected, run:
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/setup-desktop.ps1 -PythonPath "C:\path\to\Python312\python.exe"
 ```
 
-The execution-policy option applies to that process only. The script does not
-change your machine's policy. If a missing native DLL is reported, install/repair
-the [Microsoft Visual C++ x64 runtime](https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist)
-and rerun the check. If setup finds an incompatible existing environment, close
-EdgeLens, rename `backend\.venv`, then rerun setup; it will not erase it for you.
+If setup reports a missing Visual C++ DLL, install or repair the [Microsoft Visual C++ x64 runtime](https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist) and run setup again. If an existing environment is incompatible, close EdgeLens, rename `backend\.venv`, and run `setup-windows.cmd`; it does not erase that environment automatically.
 
-## 3. Run your first experiment
+## Your first model test
 
-1. Open **Overview → Local benchmark**. Upload a trusted exported classifier.
-   Enter its exact input shape, layout, class count and preprocessing settings.
-   A weights-only `.pth` file is not a complete architecture export.
-2. Upload labelled JPG/PNG images as a ZIP with root `labels.json`, mapping each
-   class folder to its model output index. Use the model's actual class order.
-3. Select the model, dataset, format and deployment goal. Start with the default
-   fixed-profile test. FP32/INT8 comparison and deployment search need separate
-   calibration, validation and held-out test ZIPs.
-4. Answer **Estimate this test in Edge Impulse? No** for the first local test.
-   Run the benchmark and wait for completion.
-5. Open **Layer diagnostics** to read numerical comparisons or unavailable
-   mappings. **Reports & history** stores and exports the complete evidence.
-   **Delete** beside a finished test asks before permanently deleting that test's
-   history/artifacts; uploaded models and datasets are preserved.
-6. Optional: connect in the separate **Edge Impulse** section, load targets, then
-   choose **Yes**, project and target in Overview. An evaluated TFLite artifact
-   is required. **Edge hardware** is for future physical board tests.
+1. Open **Overview → Local benchmark** and select a trusted exported classifier. Enter its input shape, layout, class count and preprocessing settings. A weights-only `.pth` file is not a complete model export.
+2. Upload labelled JPG/PNG images as a ZIP with a root `labels.json` mapping each class folder to its output index. Use the exact class order expected by the model.
+3. Select the model, dataset, conversion format and deployment goal. Start with **Fixed profiles / benchmark existing model**. Use separate calibration, validation and held-out test datasets for precision comparisons or deployment search.
+4. Choose **No · benchmark on this laptop only** for the first test. Run the benchmark and wait for completion.
+5. Open **Layer diagnostics** for operation-level findings and **Reports & history** for saved metrics and report export. A mapping marked unavailable means the tool cannot make an aligned comparison for that layer; it is not evidence of zero error.
+6. For internet comparisons, use the measured JSON/CSV exports and the checked examples in [`reference-examples.json`](reference-examples.json). Keep those published references labelled with their source and conditions; do not present unrelated hardware, data or preprocessing values as a controlled comparison.
 
-See [the developer guide](DEVELOPER-GUIDE.md) for model/dataset settings and
-[the Edge Impulse walkthrough](EDGE-IMPULSE-CONNECTION.md) for browser sign-in,
-project-key connection, Yes/No tests, saved estimates and deletion.
+For detailed setup values, dataset preparation and interpretation, see the [developer guide](DEVELOPER-GUIDE.md), [manual software test sequence](MANUAL-SOFTWARE-TESTS.md), and [reviewer walkthrough](REVIEWER-TEST-WALKTHROUGH.md). The [final comparison workflow](FINAL-COMPARISON-WORKFLOW.md) explains how to assemble a report from the saved runs and published references.
 
-An optional reproducible 32x32 INT8 pipeline fixture is available:
+## TFLite conversion and edge estimates
 
-```powershell
-.\backend\.venv\Scripts\python.exe scripts/create-edge-profile-demo.py
-```
+Windows can run supported imported TFLite models. PyTorch-to-TFLite conversion uses the optional Linux worker documented in [Stages 1–5](STAGES-1-5.md); WSL is not installed automatically, and WSL conversion on a teammate’s laptop has not been claimed as verified. The source setup alone does not install that worker.
 
-Follow [edge profiling](EDGE-PROFILING.md) for its generated model, spec and dataset
-paths. This synthetic fixture tests plumbing; its accuracy does not prove
-conversion superiority.
+The **Edge Impulse** page connects projects with a project API key, loads available targets and keeps provider estimates separate from local measurements. Follow the [connection guide](EDGE-IMPULSE-CONNECTION.md) or the [ONNX profiling guide](EDGE-IMPULSE-ONNX.md). Choosing **Yes** for an experiment uploads its evaluated artifact after the local benchmark. Do not upload private artifacts unless intended. Physical-device timing and memory remain **UNAVAILABLE** until a matching real-device report is recorded; selecting Raspberry Pi or ESP32 as a goal does not simulate that hardware.
 
-## 4. Update from GitHub
+## Data, updates and sharing
 
-Close EdgeLens, open the cloned repository in PowerShell, then:
+- Models, datasets, SQLite, reports and converted artifacts stay under `%APPDATA%\EdgeLens\data` on that laptop. GitHub shares the source only.
+- Edge Impulse keys are local connection credentials; teammates connect their own project keys. Never commit API keys, model weights, private datasets or personal reports.
+- Close EdgeLens and back up the full data folder before a manual restore. Before a schema migration, the app creates and verifies a SQLite backup next to the database. An older app refuses a newer database schema.
+- To update a Git clone, close EdgeLens and run `git pull --ff-only`, then double-click `run-edgelens.cmd`. To update a ZIP checkout, download and extract the latest source into a new folder and run the launcher there. Keep the data folder intact; it is separate from the source folder.
+- To contribute directly, the repository owner must invite the teammate as a collaborator. Otherwise, fork the public repository and submit a pull request.
 
-```powershell
-git pull --ff-only
-.\setup-windows.cmd
-.\start-desktop.cmd
-```
+The older [v0.4.1 portable ZIP](https://github.com/eswar-jajjara/edge-lens/releases/tag/v0.4.1) predates later features and database schemas. Use the current GitHub source and `run-edgelens.cmd` for this project version. Do not downgrade the database or delete `%APPDATA%\EdgeLens\data` to make the old build open.
 
-If Git reports local edits, preserve and review them before updating. ZIP users
-can download/extract the current source into a new folder and run setup there.
-Each source launcher uses the same local data root on that laptop.
+## Optional developer packaging
 
-## What stays on each laptop
-
-- Uploaded models, datasets, SQLite, reports and converted files live in
-  `%APPDATA%\EdgeLens\data`. GitHub shares code, not that private data.
-- API keys stay only in local engine memory and must be reconnected after
-  restarting. Never commit credentials, datasets or personal reports.
-- Use the same model bytes, preprocessing, labelled splits, converter settings
-  and constraints for comparisons. CPU timing will differ between laptops.
-- Host results are **MEASURED**, Edge Impulse results **ESTIMATED**, and physical
-  device results **UNAVAILABLE** until a matching hardware report is recorded.
-- Windows TFLite import/inference works; PT2-to-TFLite conversion needs the
-  optional Linux worker. Raspberry Pi hardware benchmarking is future work.
-
-## Older portable downloads
-
-The public v0.4.1 ZIP is an earlier prototype. It has no 0.8.0 connection/Yes-No
-features and cannot read upgraded schema-4 history. Use current source for this
-version. Do not delete `%APPDATA%\EdgeLens\data` or lower the SQLite schema to
-make an old build run. `start-desktop.cmd` starts current source even if an old
-`release\win-unpacked\EdgeLens.exe` is present. Developers can create a current
-portable folder with `npm run desktop:package`; no new public ZIP accompanies
-this source update.
-
-
-## New diagnostic and Linux-worker features
-
-Version 0.9.0 adds **Layer diagnostics → Run seven checks**, structural graph
-evidence, 100-sample timing defaults and sampled process RSS. TFLite conversion
-uses a separate verified Linux worker; Windows runs evaluated TFLite files and
-imports worker reports through **Reports & history**. Follow
-[Stages 1–5](STAGES-1-5.md). Your teammate can reproduce the synthetic Linux test
-with the GitHub workflow without uploading private models. Local WSL setup still
-requires verification on their laptop. Physical ESP32 results remain unavailable.
-
-## ONNX Edge Impulse profiling (0.9.1)
-
-Use a current source setup, or the rebuilt portable folder on this laptop. Open **Edge Impulse**, connect a dedicated project with its Read + Write key, load targets, choose a completed test and an evaluated ONNX artifact. ONNX replaces the project’s BYOM model; leave it unchanged while profiling. See [the complete walkthrough](EDGE-IMPULSE-ONNX.md). Credentials remain session-only. The older v0.4.1 release ZIP does not include this feature.
+Developers can run `npm run desktop:package` to assemble the relocatable `release\win-unpacked` folder for local inspection. It contains the Electron executable plus its runtime files and is not an installer or the recommended teammate setup. GitHub Actions validates the source setup and desktop smoke test but does not publish an installer executable. The optional container deployment for future cloud work is described in [DEPLOYMENT.md](DEPLOYMENT.md).

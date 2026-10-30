@@ -38,10 +38,12 @@ jobs:
         run: |
           Set-Location $env:EDGELENS_TEAM_ROOT
           $env:EDGELENS_DESKTOP_DATA = Join-Path $env:RUNNER_TEMP 'EdgeLens smoke data'
+          $env:EDGELENS_SMOKE_RESULT = Join-Path $env:RUNNER_TEMP 'edgelens-desktop-smoke.json'
           $log = Join-Path $env:RUNNER_TEMP 'edgelens-desktop-smoke.log'
           & node_modules/electron/dist/electron.exe . --smoke-test 2>&1 | Tee-Object -FilePath $log
           if ($LASTEXITCODE -ne 0) { throw 'Native desktop startup failed' }
-          if (-not (Select-String -LiteralPath $log -Pattern '"desktop_smoke":"passed"' -Quiet)) { throw 'Desktop smoke success message missing' }
+          $smoke = Get-Content -LiteralPath $env:EDGELENS_SMOKE_RESULT -Raw | ConvertFrom-Json
+          if ($smoke.desktop_smoke -ne 'passed') { throw 'Desktop smoke result missing or failed' }
       - name: Verify developer conversions and real QDQ precision experiments
         shell: pwsh
         run: |
@@ -71,9 +73,12 @@ jobs:
           & (Join-Path $engine 'python.exe') (Join-Path $engine 'check_install.py') --frontend-dir (Join-Path $env:EDGELENS_PORTABLE_ROOT 'resources/ui') --report (Join-Path $env:RUNNER_TEMP 'portable-runtime-report.json')
           if ($LASTEXITCODE -ne 0) { throw 'Relocated bundled runtime check failed' }
           $env:EDGELENS_DESKTOP_DATA = Join-Path $env:RUNNER_TEMP 'EdgeLens portable smoke data'
+          $env:EDGELENS_SMOKE_RESULT = Join-Path $env:RUNNER_TEMP 'edgelens-portable-smoke.json'
           $log = Join-Path $env:RUNNER_TEMP 'edgelens-portable-smoke.log'
           & (Join-Path $env:EDGELENS_PORTABLE_ROOT 'EdgeLens.exe') --smoke-test 2>&1 | Tee-Object -FilePath $log
-          if ($LASTEXITCODE -ne 0 -or -not (Select-String -LiteralPath $log -Pattern '"desktop_smoke":"passed"' -Quiet)) { throw 'Portable desktop smoke failed' }
+          if ($LASTEXITCODE -ne 0) { throw 'Portable desktop smoke failed' }
+          $smoke = Get-Content -LiteralPath $env:EDGELENS_SMOKE_RESULT -Raw | ConvertFrom-Json
+          if ($smoke.desktop_smoke -ne 'passed') { throw 'Portable smoke result missing or failed' }
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -81,5 +86,7 @@ jobs:
           path: |
             ${{ env.EDGELENS_TEAM_ROOT }}/.cache/setup-report.json
             ${{ runner.temp }}/edgelens-desktop-smoke.log
+            ${{ runner.temp }}/edgelens-desktop-smoke.json
             ${{ runner.temp }}/portable-runtime-report.json
             ${{ runner.temp }}/edgelens-portable-smoke.log
+            ${{ runner.temp }}/edgelens-portable-smoke.json

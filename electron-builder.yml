@@ -1,5 +1,7 @@
 appId: com.edgelens.studio
 productName: EdgeLens
+# Optional portable directory packaging only. Teammates use the source launcher;
+# this configuration does not produce or publish a setup installer.
 asar: true
 directories:
   output: release

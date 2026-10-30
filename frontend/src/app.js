@@ -67,7 +67,7 @@ function renderReport() {
   $('#fault-validation-evidence').innerHTML = faults ? `<p>MEASURED · ${escapeHtml(faults.scope)}</p><div class="table-scroll"><table><thead><tr><th>Known fault/control</th><th>Expected</th><th>First observed difference or rejection</th><th>Check</th></tr></thead><tbody>${faults.cases.map(c => `<tr><td>${escapeHtml(human(c.fault))}</td><td>${escapeHtml(c.expected)}</td><td>${escapeHtml(c.first_observed_divergence || c.error || 'No difference')}</td><td>${c.passed ? 'PASS' : 'FAIL'}</td></tr>`).join('')}</tbody></table></div><p>${escapeHtml(faults.limitation)}</p>` : '<p>Run the self-test to save expected versus detected outcomes in report history.</p>';
   const metrics = report.metrics || [], reference = metrics.find(metric => ['pytorch', 'reference', 'baseline'].includes(metric.profile)) || metrics[0];
   const standard = metrics.find(metric => ['fp32', 'standard', 'default', 'standard_conversion'].includes(metric.profile)) || metrics[1];
-  const configured = report.experiment_type === 'deployment_optimization' ? metrics.find(metric => metric.profile === report.selection?.selected) : metrics.find(metric => ['static_int8', 'dashboard', 'configured', 'dashboard_configured'].includes(metric.profile)) || metrics[2];
+  const configured = report.experiment_type === 'deployment_optimization' ? metrics.find(metric => metric.profile === report.selection?.selected) : metrics.find(metric => ['static_int8', 'dashboard', 'configured', 'dashboard_configured'].includes(metric.profile)) || (metrics.length > 2 ? metrics[2] : null);
   const difference = numeric(configured?.accuracy_pct) && numeric(standard?.accuracy_pct) ? configured.accuracy_pct - standard.accuracy_pct : null;
   $('#structural-evidence').innerHTML = (report.structural || []).map(s => {
     const comparison = s.comparison, rows = comparison?.rows || [];
@@ -102,8 +102,8 @@ function renderReport() {
   renderLayers(); renderDeveloperReport();
 }
 function renderHistory() {
-  $('#run-history').innerHTML = state.history.length ? state.history.map(run => `<div class="history-entry"><button class="history-row ${state.run?.id === run.id ? 'selected' : ''}" data-run-id="${escapeHtml(run.id)}"><span><strong>${escapeHtml((state.models || []).find(model => model.id === run.request?.model_id)?.name || human(run.request?.model_id || run.model_id || 'Image classifier'))}</strong><small>${escapeHtml(run.id)} · ${escapeHtml(run.created_at ? new Date(run.created_at).toLocaleString() : 'Date not recorded')}</small></span><span class="status ${run.status === 'completed' ? 'pass' : run.status === 'failed' ? 'warning' : 'neutral'}">${escapeHtml(human(run.status))}</span></button><button class="text-button delete-history" data-delete-run="${escapeHtml(run.id)}" ${isActive(run) ? 'disabled' : ''} aria-label="Delete saved test ${escapeHtml(run.id)}">Delete</button></div>`).join('') : '<div class="empty-inline">No saved experiments yet. Start a benchmark to create your first record.</div>';
-  $('#ei-run').innerHTML = '<option value="">Select a completed test</option>' + state.history.filter(run => run.status === 'completed').map(run => `<option value="${escapeHtml(run.id)}">${escapeHtml(state.models.find(model => model.id === run.request?.model_id)?.name || human(run.request?.model_id))} · ${escapeHtml(run.id.slice(0, 16))} · ${escapeHtml(new Date(run.created_at).toLocaleString())}</option>`).join('');
+  $('#run-history').innerHTML = state.history.length ? state.history.map(run => `<div class="history-entry"><button class="history-row ${state.run?.id === run.id ? 'selected' : ''}" data-run-id="${escapeHtml(run.id)}"><span><strong>${escapeHtml((state.models || []).find(model => model.id === run.request?.model_id)?.name || human(run.request?.model_id || run.model_id || 'Image classifier'))}</strong><small>${escapeHtml(run.id)} · ${escapeHtml(run.created_at && !isNaN(new Date(run.created_at)) ? new Date(run.created_at).toLocaleString() : 'Date not recorded')}</small></span><span class="status ${run.status === 'completed' ? 'pass' : run.status === 'failed' ? 'warning' : 'neutral'}">${escapeHtml(human(run.status))}</span></button><button class="text-button delete-history" data-delete-run="${escapeHtml(run.id)}" ${isActive(run) ? 'disabled' : ''} aria-label="Delete saved test ${escapeHtml(run.id)}">Delete</button></div>`).join('') : '<div class="empty-inline">No saved experiments yet. Start a benchmark to create your first record.</div>';
+  $('#ei-run').innerHTML = '<option value="">Select a completed test</option>' + state.history.filter(run => run.status === 'completed').map(run => `<option value="${escapeHtml(run.id)}">${escapeHtml(state.models.find(model => model.id === run.request?.model_id)?.name || human(run.request?.model_id))} · ${escapeHtml(run.id.slice(0, 16))} · ${escapeHtml(run.created_at && !isNaN(new Date(run.created_at)) ? new Date(run.created_at).toLocaleString() : 'Date not recorded')}</option>`).join('');
   if (state.run?.status === 'completed') $('#ei-run').value = state.run.id;
 }
 function renderDatasets(selected) {
@@ -125,7 +125,8 @@ function updateReadiness() {
   const runtime = model?.format === 'tflite' ? {available:state.capabilities?.imported_tflite_execution,reason:'Install ai-edge-litert for imported TFLite inference.'} : state.capabilities?.runtimes?.[$('#run-format').value];
   const quantizing = ['quantization_compare', 'deployment_search'].includes($('#run-strategy').value);
   const splitIds = [$('#calibration-select').value, $('#validation-select').value, $('#dataset-select').value];
-  const tfliteCalibration = model?.format === 'pt2' && $('#run-format').value === 'tflite';
+  const isPt2 = (model?.format === 'pt2') || (!model && ['mobilenet_v2', 'resnet18'].includes($('#run-model').value));
+  const tfliteCalibration = isPt2 && $('#run-format').value === 'tflite';
   const calibrationReady = tfliteCalibration ? Boolean($('#calibration-select').value && $('#calibration-select').value !== $('#dataset-select').value) : quantizing ? splitIds.every(Boolean) && new Set(splitIds).size === 3 : $('#run-strategy').value !== 'fidelity_search' || ($('#calibration-select').value && $('#calibration-select').value !== $('#dataset-select').value);
   const estimateReady = !estimateEnabled() || (selectedImpulseProject('#test-ei-project') && $('#test-ei-device').value);
   const ready = state.connected && calibrationReady && estimateReady && runtime?.available && $('#dataset-select').value && !state.creating && !state.uploading && !state.estimateBusy && !isActive(state.run);
@@ -133,12 +134,12 @@ function updateReadiness() {
   $('#start-benchmark').textContent = state.creating ? 'Submitting…' : isActive(state.run) ? 'Benchmark in progress…' : desktop ? 'Run local benchmark →' : 'Run server benchmark →';
   $('#upload-dataset').disabled = !state.connected || state.uploading;
   $('#upload-model').disabled = !state.connected || !state.capabilities?.custom_model_uploads;
-  $('#runtime-note').textContent = !state.connected ? 'Connect to the backend to upload a dataset and start a run.' : !calibrationReady ? (quantizing ? 'Choose three separate calibration, validation and test datasets.' : 'Choose a separate calibration dataset to enable fidelity search.') : runtime?.available ? (quantizing ? 'Measures FP32 and static INT8 on this CPU. Unsupported candidates are recorded with their failure reasons.' : model ? 'Your exported model runs locally with the declared image preprocessing. Unsupported signatures fail with an explanation.' : 'Sample presets use pretrained weights. The first run may download them.') : runtime?.reason || 'This runtime is unavailable. Install its optional backend dependencies before starting this format.';
+  $('#runtime-note').textContent = !state.connected ? 'Connect to the backend to upload a dataset and start a run.' : !calibrationReady ? (quantizing ? 'Choose three separate calibration, validation and test datasets.' : 'Choose a separate calibration dataset to enable fidelity search.') : runtime?.available ? (quantizing ? 'Measures FP32 and static INT8 on this CPU. Unsupported candidates are recorded with their failure reasons.' : model ? 'Your exported model runs locally with the declared image preprocessing. Unsupported signatures fail with an explanation.' : 'Sample presets use pretrained weights. The first run may download them.') : tfliteCalibration && state.capabilities?.wsl_tflite && !state.capabilities.wsl_tflite.available ? (state.capabilities.wsl_tflite.wsl_present ? '⚠ WSL present but TFLite venv not set up. Run once in WSL: bash scripts/setup-tflite-worker.sh' : '⚠ WSL not installed or access denied. Install WSL then run: bash scripts/setup-tflite-worker.sh') : (runtime?.reason || 'This runtime is unavailable. Install its optional backend dependencies before starting this format.');
   if (state.connected && !estimateReady) $('#runtime-note').textContent = 'For Yes, connect an Edge Impulse project, load its targets and select a target. Choose No to run locally without uploading.';
 }
 async function connect() {
   const token = ++state.connectionToken; error(''); $('#server-status').textContent = 'Connecting to the benchmark server…'; $('#connect-server').disabled = true;
-  const results = await Promise.allSettled([api.capabilities(), api.datasets(), api.runs(), api.models()]);
+  const results = await Promise.allSettled([api.capabilities(), api.datasets(), api.runs(), api.models(), api.health()]);
   if (token !== state.connectionToken || state.mode !== 'real') return;
   $('#connect-server').disabled = false;
   state.connected = results[0].status === 'fulfilled';
@@ -148,8 +149,34 @@ async function connect() {
   if (results[3].status === 'fulfilled') { state.models = results[3].value; renderModels(); renderHistory(); }
   $('#server-status').textContent = state.connected ? `Connected · benchmarks run on ${workerName} · reports saved in SQLite` : 'Engine unavailable · reconnect to check the status';
   const failed = results.find(result => result.status === 'rejected'); if (failed) error(describeError(failed.reason));
+  renderFirstRunCheck(results[4], results[0]);
   updateReadiness();
   if (state.connected) refreshImpulseConnections();
+}
+function prepareFirstRunCheck() {
+  if (!desktop) return;
+  $('#first-run-data-dir').textContent = window.EDGELENS_CONFIG?.dataDir || 'Data folder path not reported';
+  if (window.EDGELENS_CONFIG?.firstRun) $('#first-run-dialog').showModal();
+}
+function renderFirstRunCheck(healthResult, capabilityResult) {
+  if (!desktop) return;
+  const dialog = $('#first-run-dialog');
+  const engineReady = healthResult?.status === 'fulfilled' && healthResult.value?.status === 'ok' && capabilityResult?.status === 'fulfilled';
+  $('#first-run-engine').textContent = engineReady
+    ? (window.EDGELENS_CONFIG?.firstRun ? 'Ready — private local engine responded.' : 'Setup completed — private local engine is ready.')
+    : 'Not ready — the local engine health check failed. Use Reconnect or check the setup guide.';
+  const wsl = capabilityResult?.status === 'fulfilled' ? capabilityResult.value?.wsl_tflite : null;
+  if (wsl?.available) {
+    $('#first-run-tflite').textContent = 'Ready — the optional WSL worker is available for PyTorch-to-TFLite conversion.';
+    $('#first-run-tflite-help').textContent = 'No extra setup is needed for this worker. EdgeLens does not install or update WSL.';
+  } else if (wsl?.wsl_present) {
+    $('#first-run-tflite').textContent = 'WSL is detected, but the optional conversion worker is not ready.';
+    $('#first-run-tflite-help').textContent = 'Install the worker manually from an EdgeLens source checkout in WSL; see docs/TEAM-SETUP.md. This is optional.';
+  } else {
+    $('#first-run-tflite').textContent = 'Not configured — optional for PyTorch-to-TFLite conversion.';
+    $('#first-run-tflite-help').textContent = 'Install WSL yourself only if you need PT2-to-TFLite conversion, then follow docs/TEAM-SETUP.md. EdgeLens will not install WSL.';
+  }
+  dialog.dataset.checksReady = String(healthResult?.status === 'fulfilled' && capabilityResult?.status === 'fulfilled');
 }
 function switchMode(mode) {
   if (mode === state.mode) return;
@@ -289,6 +316,14 @@ document.querySelectorAll('[data-goto]').forEach(button => button.addEventListen
 document.querySelectorAll('[data-export]').forEach(button => button.addEventListener('click', () => exportReport(button.dataset.export)));
 $('#demo-mode').addEventListener('click', () => switchMode('demo')); $('#real-mode').addEventListener('click', () => switchMode('real'));
 $('#connect-server').addEventListener('click', connect); $('#benchmark-form').addEventListener('submit', startBenchmark); $('#upload-dataset').addEventListener('click', uploadDataset);
+$('#first-run-continue').addEventListener('click', async () => {
+  const button = $('#first-run-continue'); button.disabled = true;
+  try {
+    await window.EdgeLensDesktop?.completeFirstRun();
+    $('#first-run-dialog').close();
+  } catch (cause) { error(`Could not save the first-run check: ${describeError(cause)}`); }
+  finally { button.disabled = false; }
+});
 $('#run-target').addEventListener('change', updateTarget); $('#run-format').addEventListener('change', modelChanged); $('#dataset-select').addEventListener('change', updateDatasetDescription);
 $('#layer-search').addEventListener('input', renderLayers); $('#layer-filter').addEventListener('change', renderLayers);
 $('#layer-candidate').addEventListener('change', () => { state.layerLimit = 100; renderLayers(); });
@@ -334,6 +369,7 @@ if (desktop) {
   document.querySelector('.setup-panel .panel-heading p').textContent = 'Runs on this computer. Choose an edge device as your deployment goal.';
   document.querySelector('#history-panel .panel-heading p').textContent = 'Saved on this computer using SQLite.';
   document.querySelector('#run-progress .status').textContent = 'This computer · CPU';
+  prepareFirstRunCheck();
   switchMode('real');
 }
 navigate(initialPage);
@@ -344,6 +380,24 @@ function renderModels(selected) {
   $('#run-model').innerHTML = '<option value="mobilenet_v2">MobileNetV2 · sample preset</option><option value="resnet18">ResNet18 · sample preset</option>' + (state.models || []).map(model => `<option value="${escapeHtml(model.id)}">${escapeHtml(model.name)} · ${escapeHtml(model.format.toUpperCase())}</option>`).join('');
   if ([...$('#run-model').options].some(x => x.value === previous)) $('#run-model').value = previous;
   modelChanged();
+}
+function renderWslBadge(tfliteConversion) {
+  const badge = $('#wsl-tflite-badge');
+  if (!badge) return;
+  if (!tfliteConversion) { badge.hidden = true; return; }
+  const wsl = state.capabilities && state.capabilities.wsl_tflite;
+  badge.hidden = false;
+  if (!wsl) { badge.className = 'wsl-badge wsl-unknown'; badge.textContent = 'WSL: checking\u2026'; return; }
+  if (wsl.available) {
+    badge.className = 'wsl-badge wsl-ready';
+    badge.textContent = '\u2713 WSL TFLite worker ready \u2014 PT2\u2192TFLite conversion available';
+  } else if (wsl.wsl_present) {
+    badge.className = 'wsl-badge wsl-setup';
+    badge.innerHTML = '\u26a0\ufe0f WSL present but venv not set up. Run once: <code>bash scripts/setup-tflite-worker.sh</code>';
+  } else {
+    badge.className = 'wsl-badge wsl-missing';
+    badge.innerHTML = '\u26a0\ufe0f WSL not installed or access denied. Install WSL then run: <code>bash scripts/setup-tflite-worker.sh</code>';
+  }
 }
 function modelChanged() {
   const model = (state.models || []).find(x => x.id === $('#run-model').value);
@@ -359,8 +413,10 @@ function modelChanged() {
   $('#model-detail').textContent = model ? `${model.input_shape.join(' × ')} · ${model.layout} · ${model.class_count} classes · SHA256 ${model.sha256.slice(0, 16)}…` : 'Optional pretrained preset. Upload your exported classifier to use your own architecture and class order.';
   const optimizing = $('#run-strategy').value === 'deployment_search';
   const quantizing = ['quantization_compare', 'deployment_search'].includes($('#run-strategy').value);
-  const tfliteConversion = model?.format === 'pt2' && $('#run-format').value === 'tflite';
+  const isPt2 = (model?.format === 'pt2') || (!model && ['mobilenet_v2', 'resnet18'].includes($('#run-model').value));
+  const tfliteConversion = isPt2 && $('#run-format').value === 'tflite';
   $('#calibration-field').hidden = $('#run-strategy').value === 'fixed_profiles' && !tfliteConversion;
+  renderWslBadge(tfliteConversion);
   $('#validation-field').hidden = !quantizing;
   $('#quantization-controls').hidden = !quantizing;
   $('#deployment-controls').hidden = !optimizing;

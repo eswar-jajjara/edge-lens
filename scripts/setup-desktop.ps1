@@ -82,7 +82,7 @@ try {
         $report = Join-Path $projectRoot '.cache\setup-report.json'
         Invoke-Checked -Program $pythonExe -Arguments @('backend/check_install.py', '--frontend-dir', (Join-Path $projectRoot 'dist'), '--report', $report)
         Write-Host "Verified. Diagnostic report: $report"
-        Write-Host 'Open start-desktop.cmd. SQLite and model data are private to this laptop under %APPDATA%\EdgeLens\data.'
+        Write-Host 'Open run-edgelens.cmd. SQLite and model data are private to this laptop under %APPDATA%\EdgeLens\data.'
     } finally { Pop-Location }
 } catch {
     Write-Host "Setup/check failed: $($_.Exception.Message)" -ForegroundColor Red

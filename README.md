@@ -14,7 +14,7 @@ Published conditions are not assumed identical; unknown values stay unavailable.
 
 ## Open it
 
-**From GitHub source:** install 64-bit Python 3.12 and 64-bit Node.js 22.12+, double-click `setup-windows.cmd` once, then `start-desktop.cmd`. Setup installs the tested dependency versions and checks a real tiny PT2/ONNX conversion. `check-windows.cmd` verifies an existing setup. See [the teammate setup guide](docs/TEAM-SETUP.md) for prerequisites, diagnostics and sharing experiments.
+**Easy Windows setup (no separate installer EXE):** install 64-bit Python 3.12 and 64-bit Node.js 22.12+, download/extract the [GitHub source](https://github.com/eswar-jajjara/edge-lens), then double-click `run-edgelens.cmd`. It sets up the pinned runtimes on first launch and opens the desktop tool; run the same command next time. Setup installs the tested dependency versions and checks a tiny PT2/ONNX conversion. `check-windows.cmd` verifies an existing setup. See [the teammate setup guide](docs/TEAM-SETUP.md) for prerequisites, diagnostics and sharing experiments.
 
 **New in 0.8.0:** a separate **Edge Impulse** section, browser sign-in shortcut,
 verified project-key connections and project/target selection for each test.
@@ -26,7 +26,7 @@ discovery is not configured. Project keys connect their own projects.
 
 **For Phase 2:** use current source, select an uploaded PT2 or FP32 ONNX model, then choose **Optimize deployment · validation search**. Upload separate calibration, validation and test ZIPs. Set a selection objective and accuracy/size/host-latency limits. See [the deployment search guide](docs/DEPLOYMENT-SEARCH.md).
 
-The older [Windows x64 portable ZIP v0.4.1](https://github.com/eswar-jajjara/edge-lens/releases/tag/v0.4.1) predates precision experiments and deployment search. It cannot open newer databases. The source launcher starts the current source even if that older EXE is present. Each laptop keeps its own data under `%APPDATA%/EdgeLens/data`.
+The older [Windows x64 portable ZIP v0.4.1](https://github.com/eswar-jajjara/edge-lens/releases/tag/v0.4.1) predates precision experiments and deployment search. It cannot open newer databases. Use the current source launcher rather than that old download. Each laptop keeps its own data under `%APPDATA%/EdgeLens/data`.
 
 **Start with [the developer guide](docs/DEVELOPER-GUIDE.md)** for upload settings, test datasets, conversion comparisons, firmware steps and troubleshooting.
 
@@ -75,7 +75,12 @@ npm run desktop:package
 
 The custom integration suite runs tiny real PT2/ONNX, static INT8 QDQ, and FP32/int8 TFLite classifiers using synthetic fixtures. It verifies behavior, not project accuracy. The optional full pretrained MobileNetV2 smoke test uses `EDGELENS_ML_SMOKE=1` and may download official weights.
 
-Packaging copies Python sources because the exporter inspects them. This is an unsigned portable development build, not a signed installer. The [Windows CI workflow](https://github.com/eswar-jajjara/edge-lens/actions/workflows/windows-desktop.yml) checks fresh setup, native desktop startup and a relocated portable runtime for each source commit; see [verification](docs/VERIFICATION.md) for executed results. Use the setup/runtime check on each teammate's laptop. Version 0.9.0 is a source update; no new public portable ZIP is included.
+Packaging copies Python sources because the exporter inspects them. The optional
+portable payload is available at `release/win-unpacked`; it contains an internal
+Electron executable and is not a setup installer. The team setup path is the
+GitHub source plus `run-edgelens.cmd`. GitHub Actions checks the source setup and
+desktop runtime but does not publish an installer executable. See
+[deployment](docs/DEPLOYMENT.md) and [team setup](docs/TEAM-SETUP.md).
 
 See [architecture and frameworks](docs/ARCHITECTURE.md), [methodology](docs/BENCHMARKING.md), [API](docs/API.md) and [deployment](docs/DEPLOYMENT.md).
 
