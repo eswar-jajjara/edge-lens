@@ -175,10 +175,13 @@ class DeveloperIntegrationTests(unittest.TestCase):
             result = self.client.post(f'/api/v1/edge/impulse/{job.json()["id"]}/refresh', json={'api_key': secret})
             self.assertEqual(result.status_code, 200, result.text)
         final = self.client.get(f'/api/v1/runs/{run["id"]}').json()['report']
-        self.assertEqual(len(final['edge_results']), 2)
-        self.assertEqual(final['edge_results'][1]['measurement_scope'], 'provider_analysis')
+        by_kind = {record['kind']: record for record in final['edge_results']}
+        self.assertEqual(set(by_kind), {'hardware', 'edge_impulse_job', 'edge_impulse_result'})
+        self.assertEqual(by_kind['edge_impulse_job']['job_id'], 123)
+        self.assertEqual(by_kind['edge_impulse_result']['provider_job_record_id'], by_kind['edge_impulse_job']['id'])
+        self.assertEqual(by_kind['edge_impulse_result']['measurement_scope'], 'provider_analysis')
         self.assertNotIn(secret, json.dumps(self.app.state.repository.edge_records(run['id'])))
-        self.assertEqual(final['edge_results'][0]['latency_p50_ms'], .1)
+        self.assertEqual(by_kind['hardware']['latency_p50_ms'], .1)
 
     def test_03_overlap_rejected_and_no_report(self):
         model = self.upload(self.pt2.read_bytes())
