@@ -74,7 +74,7 @@ def required_run(request, run_id):
     if run is None:
         raise HTTPException(404, "Run not found.")
     if run.get("report"):
-        run["report"]["edge_results"] = [x for x in request.app.state.repository.edge_records(run_id) if x["kind"] in ("hardware", "edge_impulse_result")]
+        run["report"]["edge_results"] = [x for x in request.app.state.repository.edge_records(run_id) if x["kind"] in ("hardware", "edge_impulse_job", "edge_impulse_result")]
     return run
 
 
@@ -140,8 +140,11 @@ def submit_run(payload: CreateRunRequest, request: Request):
         runtime = {"available": _present("ai_edge_litert"), "reason": "Install ai-edge-litert to benchmark imported TFLite files"}
     if not runtime.get("available", False):
         raise HTTPException(503, {"code": "RUNTIME_UNAVAILABLE", "message": runtime.get("reason", "Install the required model runtime on the server.")})
+    run_request = payload.model_dump()
+    run_request["library_model_name"] = custom["name"] if custom else {"mobilenet_v2": "MobileNetV2", "resnet18": "ResNet18"}[payload.model_id]
+    run_request["library_dataset_name"] = dataset["name"]
     try:
-        return public_run(request.app.state.validation.submit(payload.model_dump(), dataset))
+        return public_run(request.app.state.validation.submit(run_request, dataset))
     except QueueFull as error:
         raise HTTPException(429, str(error)) from error
 
@@ -163,7 +166,17 @@ async def import_worker_report(request: Request):
 
 @router.get("/runs")
 def list_runs(request: Request):
-    return [{**public_run(run), "report": None} for run in request.app.state.repository.list_runs()]
+    values = []
+    for run in request.app.state.repository.list_runs():
+        report = run.get("report") or {}
+        report_model = report.get("model") or {}
+        report_dataset = report.get("datasets", {}).get("test") or report.get("dataset") or {}
+        run_request = run.get("request") or {}
+        values.append({**public_run(run),
+                       "model_name": report_model.get("name") or run_request.get("library_model_name") or run_request.get("model_id"),
+                       "dataset_name": report_dataset.get("name") or run_request.get("library_dataset_name"),
+                       "report": None})
+    return values
 
 
 @router.get("/runs/{run_id}")

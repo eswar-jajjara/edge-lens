@@ -1,4 +1,4 @@
-# ONNX profiling in EdgeLens 0.9.1
+# ONNX profiling in EdgeLens 0.10.0
 
 EdgeLens now accepts an evaluated **ONNX or TFLite** artifact in its separate Edge Impulse section. This extends Stage 5. It does not add physical ESP32 measurements.
 
@@ -25,6 +25,14 @@ For new tests, **Estimate this test in Edge Impulse? Yes** authorizes the upload
 | ESP32 measurements | UNAVAILABLE | Until an actual matching hardware report exists. |
 
 ONNX upload uses Edge Impulse's **Bring Your Own Model** workflow and replaces the selected project's uploaded BYOM model. Keep that project unchanged until the job completes; EdgeLens rejects a changed filename, model metadata or conflicting profile-job ID. These association checks are not cryptographic proof of the provider's derived artifact. One unfinished ONNX workflow per project is permitted in the local engine. Completed responses are cached so later Studio changes cannot silently replace saved evidence.
+
+The HTML and CSV report put recognized provider fields (inference-time estimate,
+RAM, ROM/flash, arena and MCU-support flags) in an **ESTIMATED** table, show
+submitted conversion/profile job phases, and retain the sanitized raw provider
+response for audit. ONNX reports explicitly keep original ONNX host accuracy
+separate from the provider-derived resource estimate; converted-model accuracy
+stays **UNAVAILABLE** unless that exact provider artifact is evaluated on the
+same held-out images.
 
 The uploaded filename includes the ONNX SHA-256. The request supplies the same fixed batch-one image input shape used for evaluation. No dataset images, calibration images or representative-feature arrays are uploaded. Credentials and request model bytes are removed from saved responses. The prototype upload limit remains **20 MiB**.
 

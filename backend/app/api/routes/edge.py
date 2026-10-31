@@ -223,11 +223,11 @@ def submit_profile(run_id: str, payload: ProfileRequest, request: Request):
                 expected_sha256=artifact["sha256"], model_format="onnx", input_shape=evaluation["preprocessing"]["input_shape"])
         except edge_impulse.ProviderSubmissionError as exc:
             phase = "upload_unknown" if exc.outcome == "unknown" else "failed"
-            request.app.state.repository.update_edge_record(job["id"], {"phase": phase})
+            request.app.state.repository.update_edge_record(job["id"], {"phase": phase, "failure_reason": str(exc)[:500]})
             suffix = " Check Studio before retrying; no automatic retry was made." if phase == "upload_unknown" else " No automatic retry was made."
             raise HTTPException(502, str(exc) + suffix) from exc
         except ValueError as exc:
-            request.app.state.repository.update_edge_record(job["id"], {"phase": "failed"})
+            request.app.state.repository.update_edge_record(job["id"], {"phase": "failed", "failure_reason": str(exc)[:500]})
             raise HTTPException(422, str(exc)) from exc
         return request.app.state.repository.update_edge_record(job["id"], {"job_id": job_id, "phase": "upload_pending"})
     try:

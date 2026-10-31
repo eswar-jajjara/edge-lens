@@ -29,3 +29,15 @@ async def upload_dataset(request: Request):
 @router.get("/datasets")
 def list_datasets(request: Request):
     return [public_dataset(item) for item in request.app.state.repository.list_datasets()]
+
+
+@router.delete("/datasets/{dataset_id}")
+def delete_dataset(dataset_id: str, request: Request):
+    if not request.app.state.config.allow_custom_models:
+        raise HTTPException(403, "Saved dataset management is available in the local developer workspace only")
+    try:
+        return request.app.state.repository.delete_dataset_record(dataset_id)
+    except KeyError as exc:
+        raise HTTPException(404, "Saved dataset not found.") from exc
+    except ValueError as exc:
+        raise HTTPException(409, str(exc)) from exc

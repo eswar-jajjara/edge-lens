@@ -12,6 +12,18 @@ def list_models(request: Request):
     return [public_model(x) for x in request.app.state.repository.list_models()]
 
 
+@router.delete("/models/{model_id}")
+def delete_model(model_id: str, request: Request):
+    if not request.app.state.config.allow_custom_models:
+        raise HTTPException(403, "Saved model management is available in the local developer workspace only")
+    try:
+        return request.app.state.repository.delete_model_record(model_id)
+    except KeyError as exc:
+        raise HTTPException(404, "Saved model not found.") from exc
+    except ValueError as exc:
+        raise HTTPException(409, str(exc)) from exc
+
+
 @router.post("/models", status_code=201)
 async def upload_model(request: Request):
     if not request.app.state.config.allow_custom_models:

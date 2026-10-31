@@ -41,25 +41,25 @@ def advance(repository, job, key):
                 finished = edge_impulse.job_finished(job["project_id"], job["job_id"], key)
             except ValueError as exc:
                 if "could not process" in str(exc):
-                    repository.update_edge_record(job["id"], {"phase": "failed"})
+                    repository.update_edge_record(job["id"], {"phase": "failed", "failure_reason": str(exc)[:500]})
                 raise
             if not finished:
                 raise ProfilePending("The job may still be running; ONNX upload/conversion is in progress.")
             uploaded = edge_impulse.pretrained_model(job["project_id"], key)
             try:
                 identity = _identity(uploaded, job["model_sha256"])
-            except ValueError:
-                repository.update_edge_record(job["id"], {"phase": "failed"})
+            except ValueError as exc:
+                repository.update_edge_record(job["id"], {"phase": "failed", "failure_reason": str(exc)[:500]})
                 raise
             repository.update_edge_record(job["id"], {"phase": "profile_submitting", "provider_identity_sha256": identity})
             try:
                 profile_id = edge_impulse.start_pretrained_profile(job["project_id"], key)
             except edge_impulse.ProviderSubmissionError as exc:
                 phase = "profile_unknown" if exc.outcome == "unknown" else "failed"
-                repository.update_edge_record(job["id"], {"phase": phase})
+                repository.update_edge_record(job["id"], {"phase": phase, "failure_reason": str(exc)[:500]})
                 raise
-            except ValueError:
-                repository.update_edge_record(job["id"], {"phase": "failed"})
+            except ValueError as exc:
+                repository.update_edge_record(job["id"], {"phase": "failed", "failure_reason": str(exc)[:500]})
                 raise
             job = repository.update_edge_record(job["id"], {"phase": "profiling", "profile_job_id": profile_id})
             raise ProfilePending("The job may still be running; the ONNX-derived profiling job was submitted. Fetch its estimate after processing finishes.")
@@ -67,7 +67,7 @@ def advance(repository, job, key):
             finished = edge_impulse.job_finished(job["project_id"], job["profile_job_id"], key)
         except ValueError as exc:
             if "could not process" in str(exc):
-                repository.update_edge_record(job["id"], {"phase": "failed"})
+                repository.update_edge_record(job["id"], {"phase": "failed", "failure_reason": str(exc)[:500]})
             raise
         if not finished:
             raise ProfilePending("The job may still be running; ONNX-derived model profiling is in progress.")
@@ -81,8 +81,8 @@ def advance(repository, job, key):
             other_job = model.get("profileJobId")
             if other_job is not None and other_job != job["profile_job_id"]:
                 raise ValueError("The project is profiling a different model job. This response is not linked to the selected upload.")
-        except ValueError:
-            repository.update_edge_record(job["id"], {"phase": "failed"})
+        except ValueError as exc:
+            repository.update_edge_record(job["id"], {"phase": "failed", "failure_reason": str(exc)[:500]})
             raise
         if not model.get("profileInfo"):
             raise ProfilePending("The job may still be running; no provider resource estimates are available yet.")

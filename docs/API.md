@@ -37,11 +37,11 @@ Base: `/api/v1`. The desktop engine binds a random loopback port and requires it
 | Method / path | Purpose |
 |---|---|
 | GET `/health`, `/capabilities` | Engine/runtime status, upload enablement, imported-TFLite availability |
-| GET / POST `/models` | List exported models / upload raw binary with percent-encoded JSON `X-Model-Spec` header |
-| GET / POST `/datasets` | List datasets / raw ZIP body, optional `X-Dataset-Name` header |
+| GET / POST / DELETE `/models` | List exported models / upload raw binary with percent-encoded JSON `X-Model-Spec` header / remove one saved SQLite model entry |
+| GET / POST / DELETE `/datasets` | List datasets / raw ZIP body, optional `X-Dataset-Name` header / remove one saved SQLite dataset entry |
 | POST `/runs` | Queue a measured experiment (202); maximum two active/queued jobs, one worker |
 | GET `/runs`, `/runs/{id}` | History / detailed state and report |
-| GET `/runs/{id}/report`, `.html`, `.csv` | Export full evidence, including attached edge observations |
+| GET `/runs/{id}/report`, `.html`, `.csv` | Export full evidence, provider job states, readable Edge Impulse resource estimates and attached edge observations |
 | GET `/runs/{id}/artifacts/{index}` | Download a checksummed saved artifact confined to its run directory |
 | GET `/edge/ports` | Enumerate local serial ports; no probing or flashing |
 | GET `/runs/{id}/edge` | Packages, hardware observations and provider jobs/results for that run |
@@ -98,10 +98,12 @@ selected configuration. No feasible candidate is an explicit result. See
 
 Firmware observation protocol: `edgelens.esp32.v1`, `package_id`, model/input SHA256, chip, IDF version, CPU MHz, arena used/capacity bytes, warm-up count, `samples_us`, output score vector. Values must match the saved manifest and be finite. Unknown fields are rejected. Hardware records preserve raw samples and capture/import source. This is report validation, not hardware attestation.
 
-Edge Impulse submission: `artifact_index`, positive `project_id`, exact supported MCU `device`, transient `api_key`, `consent_upload:true`. Refresh: `{"api_key":"..."}`. These actions use only `https://studio.edgeimpulse.com/v1/api`. Redirects are disabled; keys and request bodies are not stored in SQLite. Provider results have `measurement_scope:provider_analysis`.
+Edge Impulse submission: `artifact_index`, positive `project_id`, provider `device`, transient `api_key` or `connection_id`, and `consent_upload:true`. Evaluated TFLite is submitted directly. Evaluated ONNX uses the BYOM upload/conversion/profile workflow; supported operations and provider acceptance still vary by model. Refresh: `{"api_key":"..."}` or `{"connection_id":"..."}`. These actions use only `https://studio.edgeimpulse.com/v1/api`. Redirects are disabled; keys and request model bytes are not stored in SQLite. Provider results have `measurement_scope:provider_analysis` and remain separate from host and physical-device results. HTML and CSV exports show recognized timing, RAM, ROM/flash, arena and support fields as ESTIMATED, plus pending/failed job state and evaluation-link provenance. ONNX provider-converted accuracy is UNAVAILABLE until EdgeLens evaluates that exact derived artifact on the held-out set.
+
+`DELETE /models/{model_id}` and `DELETE /datasets/{dataset_id}` remove only the selected SQLite library row. Original uploaded files and completed report snapshots are kept. Active tests block removal with 409. Dataset index rows in `run_datasets` are removed so the database foreign key remains valid; the run's saved JSON report retains its dataset snapshot.
 
 SQLite migrations preserve old data: schema 2 adds `custom_models`/`edge_records`, schema 3 adds `run_candidates`/`run_datasets`, and schema 4 adds `sensitivity_results`/`deployment_selections`. Reports and normalized records are saved transactionally. API startup marks interrupted jobs failed. No retry synthesizes successful measurements. Model artifacts remain in the data directory; public report paths are sanitized.
 
 ### Phase 3 provider evidence
 
-`POST /edge/impulse/targets` accepts `{project_id, api_key}` and returns only supported `{mcu,name}` pairs from the project information API. It does not upload a model or store the key. Profile submission now returns 409 before network access unless the selected TFLite SHA-256 has a complete, matching held-out metric. It also verifies the bytes actually sent. Job/result records carry `evaluated_artifact`, model hash, target, provider URL and timestamp. Results retain `raw_response` (credential/request-byte fields removed) and `response_sha256`. Public reports include derived `evidence_sections` and candidate-scoped `diagnostic_summary`; these additions require no SQLite migration. Old runs remain readable with unavailable accuracy links.
+`POST /edge/impulse/targets` accepts `{project_id, api_key}` and returns only supported `{mcu,name}` pairs from the project information API. It does not upload a model or store the key. Profile submission returns 409 before network access unless the selected ONNX/TFLite SHA-256 has a complete, matching held-out metric. It also verifies the bytes actually sent. TFLite uses the provider's direct profiling job; ONNX uses BYOM upload, conversion and a separate profile job. Job/result records carry `evaluated_artifact`, model hash, target, provider URL and timestamp. Results retain `raw_response` (credential/request-byte fields removed) and `response_sha256`. Public reports include derived `evidence_sections`, candidate-scoped `diagnostic_summary` and provider resource fields; these additions require no SQLite migration. Old runs remain readable with unavailable accuracy links.

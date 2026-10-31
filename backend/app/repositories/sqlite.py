@@ -127,6 +127,38 @@ class Repository:
             rows = connection.execute("SELECT metadata_json FROM datasets ORDER BY created_at DESC, id DESC").fetchall()
         return [json.loads(row["metadata_json"]) for row in rows]
 
+    @staticmethod
+    def _active_run_using(connection: sqlite3.Connection, object_id: str, fields: tuple[str, ...]) -> str | None:
+        rows = connection.execute("SELECT id, request_json FROM runs WHERE status IN ('queued','running')").fetchall()
+        for row in rows:
+            request = json.loads(row["request_json"])
+            if any(request.get(field) == object_id for field in fields):
+                return row["id"]
+        return None
+
+    def delete_dataset_record(self, dataset_id: str) -> dict:
+        """Remove a dataset from SQLite while preserving its imported ZIP and report snapshots."""
+        if not re.fullmatch(r"ds_[a-f0-9]{32}", dataset_id):
+            raise KeyError(dataset_id)
+        with self._connection() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            row = connection.execute("SELECT 1 FROM datasets WHERE id=?", (dataset_id,)).fetchone()
+            if row is None:
+                raise KeyError(dataset_id)
+            active_run = self._active_run_using(
+                connection, dataset_id,
+                ("dataset_id", "calibration_dataset_id", "validation_dataset_id"),
+            )
+            if active_run:
+                raise ValueError(f"This dataset is used by active test {active_run}. Wait for it to finish before removing the saved entry.")
+            # Run reports contain their own dataset snapshot. This index row is
+            # the only foreign-key reference and can be removed without touching
+            # completed history or the imported ZIP on disk.
+            connection.execute("DELETE FROM run_datasets WHERE dataset_id=?", (dataset_id,))
+            connection.execute("DELETE FROM datasets WHERE id=?", (dataset_id,))
+        return {"deleted_dataset_id": dataset_id, "database_record_removed": True,
+                "imported_file_preserved": True, "history_snapshots_preserved": True}
+
     def create_run(self, request: dict) -> dict:
         run_id, created_at = "run_" + uuid4().hex, _now()
         with self._connection() as connection:
@@ -276,6 +308,22 @@ class Repository:
         with self._connection() as connection:
             rows = connection.execute("SELECT metadata_json FROM custom_models ORDER BY created_at DESC").fetchall()
         return [json.loads(row[0]) for row in rows]
+
+    def delete_model_record(self, model_id):
+        """Remove a model from the SQLite library without deleting its uploaded file."""
+        if not re.fullmatch(r"model_[a-f0-9]{32}", model_id):
+            raise KeyError(model_id)
+        with self._connection() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            row = connection.execute("SELECT 1 FROM custom_models WHERE id=?", (model_id,)).fetchone()
+            if row is None:
+                raise KeyError(model_id)
+            active_run = self._active_run_using(connection, model_id, ("model_id",))
+            if active_run:
+                raise ValueError(f"This model is used by active test {active_run}. Wait for it to finish before removing the saved entry.")
+            connection.execute("DELETE FROM custom_models WHERE id=?", (model_id,))
+        return {"deleted_model_id": model_id, "database_record_removed": True,
+                "imported_file_preserved": True, "history_snapshots_preserved": True}
 
     def save_edge_record(self, run_id, kind, payload, record_id=None):
         value = dict(payload, id=record_id or "edge_" + uuid4().hex, run_id=run_id, kind=kind, created_at=_now())

@@ -48,6 +48,26 @@ def report_csv(report):
         row([]); row([name]); row(keys)
         for value in rows:
             row([value.get(k) for k in keys])
+    edge = evidence_sections(report)["edge_impulse"]
+    row([]); row(["Edge Impulse job status"])
+    row(["Project", "Format", "Target", "Upload job", "Profile job", "Phase", "Status"])
+    for job in edge["jobs"]:
+        row([job.get("project_name") or job.get("project_id"), job.get("model_format"), job.get("device"),
+             job.get("job_id"), job.get("profile_job_id"), job.get("phase"), job.get("status")])
+    if not edge["jobs"]:
+        row(["UNAVAILABLE", "No submitted Edge Impulse job is recorded."])
+    row([]); row(["Edge Impulse provider estimates · ESTIMATED"])
+    row(["Project", "Format", "Target", "Provider job", "Upload evaluation link", "Provider accuracy link", "Model SHA-256"])
+    for value in edge["records"]:
+        row([value.get("project_name") or value.get("project_id"), value.get("model_format"), value.get("device"),
+             value.get("job_id"), value.get("upload_evaluation_link"), value.get("accuracy_link"), value.get("model_sha256")])
+        row(["Provider field", "Value", "Unit"])
+        for estimate in value.get("resource_estimates", []):
+            row([estimate.get("field"), estimate.get("value"), estimate.get("unit")])
+        if not value.get("resource_estimates"):
+            row(["UNAVAILABLE", "Provider returned no recognized resource metrics", ""])
+        row(["Provider conversion", value.get("provider_conversion") or "Direct upload of the evaluated TFLite artifact"])
+        row(["Converted-model accuracy", value.get("accuracy_link", "UNAVAILABLE")])
     for key in ("artifacts", "edge_results", "methodology", "limitations"):
         row([]); row([key])
         for item in report.get(key, []):

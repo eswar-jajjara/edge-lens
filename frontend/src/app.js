@@ -102,15 +102,21 @@ function renderReport() {
   renderLayers(); renderDeveloperReport();
 }
 function renderHistory() {
-  $('#run-history').innerHTML = state.history.length ? state.history.map(run => `<div class="history-entry"><button class="history-row ${state.run?.id === run.id ? 'selected' : ''}" data-run-id="${escapeHtml(run.id)}"><span><strong>${escapeHtml((state.models || []).find(model => model.id === run.request?.model_id)?.name || human(run.request?.model_id || run.model_id || 'Image classifier'))}</strong><small>${escapeHtml(run.id)} · ${escapeHtml(run.created_at && !isNaN(new Date(run.created_at)) ? new Date(run.created_at).toLocaleString() : 'Date not recorded')}</small></span><span class="status ${run.status === 'completed' ? 'pass' : run.status === 'failed' ? 'warning' : 'neutral'}">${escapeHtml(human(run.status))}</span></button><button class="text-button delete-history" data-delete-run="${escapeHtml(run.id)}" ${isActive(run) ? 'disabled' : ''} aria-label="Delete saved test ${escapeHtml(run.id)}">Delete</button></div>`).join('') : '<div class="empty-inline">No saved experiments yet. Start a benchmark to create your first record.</div>';
-  $('#ei-run').innerHTML = '<option value="">Select a completed test</option>' + state.history.filter(run => run.status === 'completed').map(run => `<option value="${escapeHtml(run.id)}">${escapeHtml(state.models.find(model => model.id === run.request?.model_id)?.name || human(run.request?.model_id))} · ${escapeHtml(run.id.slice(0, 16))} · ${escapeHtml(run.created_at && !isNaN(new Date(run.created_at)) ? new Date(run.created_at).toLocaleString() : 'Date not recorded')}</option>`).join('');
+  $('#run-history').innerHTML = state.history.length ? state.history.map(run => `<div class="history-entry"><button class="history-row ${state.run?.id === run.id ? 'selected' : ''}" data-run-id="${escapeHtml(run.id)}"><span><strong>${escapeHtml(run.model_name || (state.models || []).find(model => model.id === run.request?.model_id)?.name || human(run.request?.model_id || run.model_id || 'Image classifier'))}</strong><small>${escapeHtml(run.id)} · ${escapeHtml(run.created_at && !isNaN(new Date(run.created_at)) ? new Date(run.created_at).toLocaleString() : 'Date not recorded')}</small></span><span class="status ${run.status === 'completed' ? 'pass' : run.status === 'failed' ? 'warning' : 'neutral'}">${escapeHtml(human(run.status))}</span></button><button class="text-button delete-history" data-delete-run="${escapeHtml(run.id)}" ${isActive(run) ? 'disabled' : ''} aria-label="Delete saved test ${escapeHtml(run.id)}">Delete</button></div>`).join('') : '<div class="empty-inline">No saved experiments yet. Start a benchmark to create your first record.</div>';
+  $('#ei-run').innerHTML = '<option value="">Select a completed test</option>' + state.history.filter(run => run.status === 'completed').map(run => `<option value="${escapeHtml(run.id)}">${escapeHtml(run.model_name || state.models.find(model => model.id === run.request?.model_id)?.name || human(run.request?.model_id))} · ${escapeHtml(run.id.slice(0, 16))} · ${escapeHtml(run.created_at && !isNaN(new Date(run.created_at)) ? new Date(run.created_at).toLocaleString() : 'Date not recorded')}</option>`).join('');
   if (state.run?.status === 'completed') $('#ei-run').value = state.run.id;
+}
+function renderSavedInputs() {
+  const modelRoot = $('#saved-model-list'), datasetRoot = $('#saved-dataset-list');
+  if (!modelRoot || !datasetRoot) return;
+  modelRoot.innerHTML = state.models.length ? state.models.map(model => `<article class="saved-input-row"><div><strong>${escapeHtml(model.name)}</strong><small>${escapeHtml(model.format.toUpperCase())} · ${number(model.size_bytes / 1048576, 3)} MiB · ID ${escapeHtml(model.id.slice(-6))}</small></div><button class="text-button remove-saved-input" type="button" data-delete-saved-model="${escapeHtml(model.id)}" ${!state.connected ? 'disabled' : ''}>Remove from SQLite</button></article>`).join('') : '<p class="empty-inline">No uploaded models saved in the local library.</p>';
+  datasetRoot.innerHTML = state.datasets.length ? state.datasets.map(dataset => `<article class="saved-input-row"><div><strong>${escapeHtml(dataset.name)}</strong><small>${number(dataset.image_count, 0)} images · ${number(dataset.class_count, 0)} classes · ID ${escapeHtml(dataset.id.slice(-6))}</small></div><button class="text-button remove-saved-input" type="button" data-delete-saved-dataset="${escapeHtml(dataset.id)}" ${!state.connected ? 'disabled' : ''}>Remove from SQLite</button></article>`).join('') : '<p class="empty-inline">No image datasets saved in the local library.</p>';
 }
 function renderDatasets(selected) {
   const previous = selected || $('#dataset-select').value;
-  $('#dataset-select').innerHTML = '<option value="">Select a labelled dataset</option>' + state.datasets.map(dataset => `<option value="${escapeHtml(dataset.id)}">${escapeHtml(dataset.name)} · ${escapeHtml(dataset.image_count)} images</option>`).join('');
+  $('#dataset-select').innerHTML = '<option value="">Select a labelled dataset</option>' + state.datasets.map(dataset => `<option value="${escapeHtml(dataset.id)}">${escapeHtml(dataset.name)} · ${escapeHtml(dataset.image_count)} images · ${escapeHtml(dataset.id.slice(-6))}</option>`).join('');
   if (state.datasets.some(dataset => dataset.id === previous)) $('#dataset-select').value = previous;
-  renderCalibration(); updateDatasetDescription();
+  renderCalibration(); renderSavedInputs(); updateDatasetDescription();
 }
 function updateDatasetDescription() {
   const dataset = state.datasets.find(item => item.id === $('#dataset-select').value);
@@ -316,6 +322,23 @@ document.querySelectorAll('[data-goto]').forEach(button => button.addEventListen
 document.querySelectorAll('[data-export]').forEach(button => button.addEventListener('click', () => exportReport(button.dataset.export)));
 $('#demo-mode').addEventListener('click', () => switchMode('demo')); $('#real-mode').addEventListener('click', () => switchMode('real'));
 $('#connect-server').addEventListener('click', connect); $('#benchmark-form').addEventListener('submit', startBenchmark); $('#upload-dataset').addEventListener('click', uploadDataset);
+$('#saved-inputs').addEventListener('click', async event => {
+  const button = event.target.closest('[data-delete-saved-model],[data-delete-saved-dataset]');
+  if (!button || !state.connected) return;
+  const modelId = button.dataset.deleteSavedModel, datasetId = button.dataset.deleteSavedDataset;
+  const item = modelId ? state.models.find(value => value.id === modelId) : state.datasets.find(value => value.id === datasetId);
+  if (!item) return;
+  const kind = modelId ? 'model' : 'dataset';
+  const accepted = window.confirm(`Remove “${item.name}” from the saved SQLite ${kind} library?\n\nThe imported file and existing report snapshots will stay in the data folder. This only removes the saved library entry and selection option.`);
+  if (!accepted) return;
+  button.disabled = true; error('');
+  try {
+    if (modelId) { await api.deleteModel(modelId); state.models = await api.models(); renderModels(); }
+    else { await api.deleteDataset(datasetId); state.datasets = await api.datasets(); renderDatasets(); }
+    await refreshHistory(); updateReadiness();
+    toast(`Removed ${item.name} from SQLite. Imported file and saved reports were kept.`);
+  } catch (cause) { error(describeError(cause)); button.disabled = false; }
+});
 $('#first-run-continue').addEventListener('click', async () => {
   const button = $('#first-run-continue'); button.disabled = true;
   try {
@@ -377,9 +400,9 @@ navigate(initialPage);
 
 function renderModels(selected) {
   const previous = selected || $('#run-model').value;
-  $('#run-model').innerHTML = '<option value="mobilenet_v2">MobileNetV2 · sample preset</option><option value="resnet18">ResNet18 · sample preset</option>' + (state.models || []).map(model => `<option value="${escapeHtml(model.id)}">${escapeHtml(model.name)} · ${escapeHtml(model.format.toUpperCase())}</option>`).join('');
+  $('#run-model').innerHTML = '<option value="mobilenet_v2">MobileNetV2 · sample preset</option><option value="resnet18">ResNet18 · sample preset</option>' + (state.models || []).map(model => `<option value="${escapeHtml(model.id)}">${escapeHtml(model.name)} · ${escapeHtml(model.format.toUpperCase())} · ${escapeHtml(model.id.slice(-6))}</option>`).join('');
   if ([...$('#run-model').options].some(x => x.value === previous)) $('#run-model').value = previous;
-  modelChanged();
+  renderSavedInputs(); modelChanged();
 }
 function renderWslBadge(tfliteConversion) {
   const badge = $('#wsl-tflite-badge');
@@ -428,7 +451,7 @@ function modelChanged() {
 function renderCalibration() {
   for (const selector of ['#calibration-select', '#validation-select']) {
     const previous = $(selector).value;
-    $(selector).innerHTML = '<option value="">Choose a separate dataset</option>' + state.datasets.map(x => `<option value="${escapeHtml(x.id)}">${escapeHtml(x.name)} · ${x.image_count} images</option>`).join('');
+    $(selector).innerHTML = '<option value="">Choose a separate dataset</option>' + state.datasets.map(x => `<option value="${escapeHtml(x.id)}">${escapeHtml(x.name)} · ${x.image_count} images · ${escapeHtml(x.id.slice(-6))}</option>`).join('');
     if (state.datasets.some(x => x.id === previous)) $(selector).value = previous;
   }
 }
@@ -598,8 +621,12 @@ function renderImpulse() {
   const oldJob = $('#ei-job').value, records = state.edgeRecords;
   $('#ei-job').innerHTML = '<option value="">Select a submitted job</option>' + records.filter(x => x.kind === 'edge_impulse_job').map(x => `<option value="${escapeHtml(x.id)}">${escapeHtml((x.model_format || 'tflite').toUpperCase())} · Project ${x.project_id} · ${escapeHtml(x.device)} · job ${x.job_id ?? 'unconfirmed'}${x.phase ? ' · ' + escapeHtml(x.phase) : ''}</option>`).join('');
   if (records.some(x => x.id === oldJob)) $('#ei-job').value = oldJob;
-  const results = (state.report.edge_results || []).filter(x => x.kind === 'edge_impulse_result');
-  $('#ei-evidence').innerHTML = results.map(x => `<article class="provider-result"><strong>ESTIMATED · ${escapeHtml(x.device)}</strong><p>Project: ${escapeHtml(x.project_name || x.project_id)} · Job ${x.job_id} · Recorded ${escapeHtml(new Date(x.created_at).toLocaleString())}</p><p>${x.model_format === 'onnx' ? 'Provider conversion: ONNX → provider model. Converted-model accuracy is UNAVAILABLE. Uploaded ONNX evaluation link: ' + escapeHtml(state.report.evidence_sections?.edge_impulse?.records?.find(r => r.id === x.id)?.upload_evaluation_link || 'UNAVAILABLE') + '. ' : ''}Accuracy link: ${escapeHtml(state.report.evidence_sections?.edge_impulse?.records?.find(r => r.id === x.id)?.accuracy_link || 'UNAVAILABLE')} · Model SHA-256: <code>${escapeHtml(x.model_sha256)}</code></p><details><summary>Provider response · timing, RAM and flash estimates</summary><pre>${escapeHtml(JSON.stringify(x.provider_result,null,2))}</pre></details><p>Laptop measurements remain separate. Physical ESP32 measurements: ${(state.report.edge_results || []).some(r => r.kind === 'hardware') ? 'see Edge hardware' : 'UNAVAILABLE'}.</p></article>`).join('') || '<p class="field-help">UNAVAILABLE · No completed provider response is saved for this test yet. Submitted jobs can be fetched after processing finishes.</p>';
+  const edgeEvidence = state.report.evidence_sections?.edge_impulse || {};
+  const jobs = edgeEvidence.jobs || [];
+  const results = edgeEvidence.records || [];
+  const jobCards = jobs.map(job => `<article class="provider-result"><strong>${escapeHtml(job.status)}</strong><p>${escapeHtml((job.model_format || 'TFLite').toUpperCase())} · ${escapeHtml(job.project_name || job.project_id)} · ${escapeHtml(job.device)} · upload job ${escapeHtml(job.job_id ?? 'receipt unavailable')}${job.profile_job_id ? ` · profile job ${escapeHtml(job.profile_job_id)}` : ''}</p>${job.failure_reason ? `<p>Provider status: ${escapeHtml(job.failure_reason)}</p>` : ''}<p>Use the submitted job selector and Fetch completed estimate when processing finishes. If its receipt is unknown, check Studio before submitting again.</p></article>`).join('');
+  const resultCards = results.map(result => `<article class="provider-result"><strong>ESTIMATED · ${escapeHtml(result.device)}</strong><p>Project: ${escapeHtml(result.project_name || result.project_id)} · Provider job ${escapeHtml(result.profile_job_id || result.job_id)} · Recorded ${escapeHtml(new Date(result.created_at).toLocaleString())}</p><p>${result.model_format === 'onnx' ? 'ONNX → Edge Impulse provider conversion. Original ONNX accuracy is a host measurement; converted-model accuracy is UNAVAILABLE. ' : 'The exact evaluated TFLite artifact was submitted. '}Uploaded artifact link: ${escapeHtml(result.upload_evaluation_link || 'UNAVAILABLE')} · Provider accuracy link: ${escapeHtml(result.accuracy_link || 'UNAVAILABLE')} · Model SHA-256: <code>${escapeHtml(result.model_sha256)}</code></p><h3>Provider resource estimates</h3>${result.resource_estimates?.length ? developerTable(result.resource_estimates,['field','value','unit']) : '<p class="field-help">UNAVAILABLE · The response contains no recognized resource fields.</p>'}<details><summary>Sanitized provider response and provenance</summary><pre>${escapeHtml(JSON.stringify({provider_conversion:result.provider_conversion,provider_result:result.provider_result,response_sha256:result.response_sha256,uploaded_artifact_evaluation:result.uploaded_artifact_evaluation,evaluation:result.evaluation},null,2))}</pre></details><p>Laptop measurements remain separate. Physical ESP32 measurements: ${(state.report.edge_results || []).some(r => r.kind === 'hardware') ? 'see Edge hardware' : 'UNAVAILABLE'}.</p></article>`).join('');
+  $('#ei-evidence').innerHTML = jobCards + resultCards || '<p class="field-help">UNAVAILABLE · No Edge Impulse estimate or submitted provider job is saved for this test yet.</p>';
 }
 async function impulseAction(button, action) {
   if (state.mode !== 'real' || !state.connected) return error('Use Local benchmark and connect the local engine first.');
@@ -614,13 +641,14 @@ async function submitImpulseEstimate(run, artifact_index, destination) {
   try {
     // One POST only. A timeout is never retried: Studio may have accepted it.
     const job = await api.startProfile(run.id, {artifact_index, project_id:destination.project_id, device:destination.device, connection_id:destination.connection_id, consent_upload:true});
-    if (state.run?.id === run.id) { await refreshEdgeRecords(); $('#ei-job').value = job.id; $('#ei-status').textContent = `Job ${job.job_id} submitted to project ${job.project_id}. Waiting for the provider estimate…`; }
+    if (state.run?.id === run.id) { await reloadEdgeReport(); $('#ei-job').value = job.id; $('#ei-status').textContent = `${(job.model_format || 'TFLite').toUpperCase()} job ${job.job_id ?? 'submitted'} saved for project ${job.project_id}. Waiting for the provider estimate…`; }
     for (let attempt=0; attempt<12; attempt++) {
       await new Promise(resolve => setTimeout(resolve,10000));
       if (state.mode !== 'real' || state.run?.id !== run.id) return 'Job submitted. Open this test and fetch its estimate after processing finishes.';
       try { await api.refreshProfile(job.id,{connection_id:destination.connection_id}); await reloadEdgeReport(); return 'Provider estimate saved in SQLite and included in HTML, JSON and CSV reports.'; }
       catch (cause) {
         if (cause.status !== 502 || !cause.message.includes('job may still be running')) throw cause;
+        await reloadEdgeReport();
       }
     }
     return 'Job submitted; the provider has not finished yet. Use Fetch completed estimate later. Do not submit the model again.';
@@ -679,7 +707,8 @@ $('#refresh-ei').addEventListener('click', event => impulseAction(event.currentT
   const job = state.edgeRecords.find(x => x.id === $('#ei-job').value && x.kind === 'edge_impulse_job');
   if (!job) throw new Error('Select a submitted job for this test.');
   const project = selectedImpulseProject(); if (!project || project.project_id !== job.project_id) throw new Error(`Connect and select the original project ${job.project_id} to fetch this estimate.`);
-  await api.refreshProfile(job.id,{connection_id:project.connection_id}); await reloadEdgeReport(); return 'Provider estimate saved separately from laptop and hardware measurements.';
+  try { await api.refreshProfile(job.id,{connection_id:project.connection_id}); await reloadEdgeReport(); return 'Provider estimate saved separately from laptop and hardware measurements.'; }
+  catch (cause) { await reloadEdgeReport(); throw cause; }
 }));
 
 $('#worker-import-form').addEventListener('submit', async event => {

@@ -21,6 +21,7 @@
   window.EdgeLensAPI = Object.freeze({
     health: () => request('/health'), capabilities: () => request('/capabilities'), datasets: () => request('/datasets'),
     uploadDataset: (file, name) => request('/datasets', { method: 'POST', headers: { 'Content-Type': 'application/zip', 'X-Dataset-Name': name.replace(/[^\x20-\x7e]/g, '_') }, body: file, signal: AbortSignal.timeout(120000) }),
+    deleteDataset: id => request(`/datasets/${encodeURIComponent(id)}`, {method:'DELETE'}),
     runs: () => request('/runs'), run: id => request(runPath(id)), report: id => request(`${runPath(id)}/report`),
     deleteRun: id => request(runPath(id), {method:'DELETE'}),
     importWorkerReport: file => request('/worker-reports', {method:'POST', headers:{'Content-Type':'application/zip'}, body:file, signal:AbortSignal.timeout(120000)}),
@@ -30,6 +31,7 @@
     reportUrl: (id, format) => { if (!['html', 'csv', 'json'].includes(format)) throw new Error('Unsupported report format'); return `${base()}${runPath(id)}/report${format === 'json' ? '' : `.${format}`}`; },
     models: () => request('/models'),
     uploadModel: (file, spec) => request('/models', {method:'POST', headers:{'Content-Type':'application/octet-stream','X-Model-Spec':encodeURIComponent(JSON.stringify(spec))},body:file,signal:AbortSignal.timeout(120000)}),
+    deleteModel: id => request(`/models/${encodeURIComponent(id)}`, {method:'DELETE'}),
     ports: () => request('/edge/ports'), edgeRecords: id => request(`${runPath(id)}/edge`),
     preparePackage: (id,payload) => request(`${runPath(id)}/edge/packages`, {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload),signal:AbortSignal.timeout(60000)}),
     packageUrl: id => `${base()}/edge/packages/${encodeURIComponent(id)}/download`,

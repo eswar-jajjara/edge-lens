@@ -1,67 +1,84 @@
-# EdgeLens — Deployment Validation Tool 0.10.0
+# EdgeLens
 
-A Windows desktop developer tool for validating image-classifier conversion and investigating edge readiness with separately labelled provider estimates. Electron starts a private local Python engine automatically; SQLite stores models, datasets, metrics, layer findings and reports. Model binaries stay on disk with SHA256 metadata in SQLite.
+EdgeLens is a Windows desktop developer tool for validating image-classifier models and comparing conversion results. It runs its Python engine on your computer and stores experiment history in a local SQLite database.
 
-**New in 0.10.0:** readable offline reports with compact tables, aligned numbers,
-accuracy/latency/size charts and expandable technical evidence. **Reports &
-history → Compare saved results and published references** combines measured
-PyTorch/ONNX/TFLite JSON exports with separately labelled internet references.
-Follow [the complete testing and final-report pathway](docs/FINAL-COMPARISON-WORKFLOW.md)
-and use [the checked reference starter](docs/reference-examples.json).
-Published conditions are not assumed identical; unknown values stay unavailable.
+## Start here
 
-**New in 0.9.1:** profile evaluated ONNX files through Edge Impulse’s BYOM workflow. Upload and profiling jobs are saved separately; provider-converted accuracy remains unavailable. See [the ONNX walkthrough](docs/EDGE-IMPULSE-ONNX.md).
+### Requirements
 
-## Open it
+- Windows 10 or 11, 64-bit
+- Python 3.12, 64-bit
+- Node.js 22.12 or later, 64-bit
+- Internet access for the first setup, which downloads the pinned runtime packages
 
-**Easy Windows setup (no separate installer EXE):** install 64-bit Python 3.12 and 64-bit Node.js 22.12+, download/extract the [GitHub source](https://github.com/eswar-jajjara/edge-lens), then double-click `run-edgelens.cmd`. It sets up the pinned runtimes on first launch and opens the desktop tool; run the same command next time. Setup installs the tested dependency versions and checks a tiny PT2/ONNX conversion. `check-windows.cmd` verifies an existing setup. See [the teammate setup guide](docs/TEAM-SETUP.md) for prerequisites, diagnostics and sharing experiments.
+No administrator access, GPU, WSL, Raspberry Pi, or ESP32 is required for local software benchmarks.
 
-**New in 0.8.0:** a separate **Edge Impulse** section, browser sign-in shortcut,
-verified project-key connections and project/target selection for each test.
-Overview asks **Estimate this test in Edge Impulse? Yes / No**. Reports & history
-can delete an individual finished test after confirmation. See
-[the connection and testing walkthrough](docs/EDGE-IMPULSE-CONNECTION.md).
-Browser sign-in alone does not authorize this tool; account-wide OAuth project
-discovery is not configured. Project keys connect their own projects.
+### Run EdgeLens
 
-**For Phase 2:** use current source, select an uploaded PT2 or FP32 ONNX model, then choose **Optimize deployment · validation search**. Upload separate calibration, validation and test ZIPs. Set a selection objective and accuracy/size/host-latency limits. See [the deployment search guide](docs/DEPLOYMENT-SEARCH.md).
+1. Download the source ZIP from [GitHub](https://github.com/eswar-jajjara/edge-lens) and extract it, or clone it:
 
-The older [Windows x64 portable ZIP v0.4.1](https://github.com/eswar-jajjara/edge-lens/releases/tag/v0.4.1) predates precision experiments and deployment search. It cannot open newer databases. Use the current source launcher rather than that old download. Each laptop keeps its own data under `%APPDATA%/EdgeLens/data`.
+   ```powershell
+   git clone https://github.com/eswar-jajjara/edge-lens.git
+   cd edge-lens
+   ```
 
-**Start with [the developer guide](docs/DEVELOPER-GUIDE.md)** for upload settings, test datasets, conversion comparisons, firmware steps and troubleshooting.
+2. Double-click `run-edgelens.cmd`. On first launch it prepares the local Python and Node dependencies, builds the desktop interface, checks the engine, and opens EdgeLens. Use the same launcher for later starts.
 
-For a feature-by-feature explanation and a complete test sequence without an ESP32, follow [manual software tests](docs/MANUAL-SOFTWARE-TESTS.md).
+For separate setup, diagnostic, and troubleshooting steps, see [Windows teammate setup](docs/TEAM-SETUP.md). EdgeLens is shared as source; the old v0.4.1 portable ZIP is outdated and cannot open newer database schemas.
 
-For your project review, follow [the reviewer test walkthrough](docs/REVIEWER-TEST-WALKTHROUGH.md): every software check, the prepared 500-image ImageNet-1K/MobileNetV2 V2 experiment on this laptop, published references and the evidence folder to present.
+## Run your first benchmark
 
-## Features
+1. Open **Overview → Local benchmark**.
+2. Select a trusted exported image classifier: `.pt2`, single-file `.onnx`, or `.tflite`. Weights-only `.pth` files need their architecture and must be exported first.
+3. Set the model input shape, class count, layout, and preprocessing to match its training/export configuration.
+4. Upload a labelled image ZIP. Keep class folder names and label indices aligned with the model output order.
+5. Choose a dataset and a conversion format, then start with **Fixed profiles / benchmark existing model** and **No · benchmark on this laptop only**.
+6. Read the saved report and layer diagnostics. Export HTML, CSV, or JSON from **Reports & history**.
 
-- Upload your own `.pt2`, single-file `.onnx` or `.tflite` image classifier with preprocessing and class-count settings. Supported signatures are fixed batch-one, one image input and one class-score output. Only load trusted exports; this is not an untrusted-model sandbox.
-- Compare a PT2 reference against standard ONNX export and an **EdgeLens fidelity-guided conversion strategy**, using separate calibration and held-out datasets. Retain every candidate and the selection rationale; equal/worse results are valid.
-- Compare **FP32 ONNX versus static INT8 QDQ** from PT2 or FP32 ONNX uploads. Keep calibration, validation and test datasets separate; save exact settings, observed quantization coverage, per-metric provenance and failed candidates. See [precision experiments and the reproducible demo](docs/PRECISION-EXPERIMENTS.md).
-- Search calibration methods and weight granularities, measure preserved ONNX operation drift, test selective FP32 weight exclusions and choose a measured configuration under explicit validation constraints. Inspect Pareto trade-offs, controlled sensitivity results and rejection reasons. FP32 or no feasible candidate are valid outcomes; held-out test data never chooses the winner.
-- Benchmark imported ONNX/TFLite models independently. Without PyTorch reference data, conversion loss is explicitly unavailable.
-- Measure labelled top-1 accuracy, prediction agreement, output MAE/max error, conversion/search time, mean/median/p95 host latency and serialized size.
-- Inspect conservative per-operation mappings, an unoptimized diagnostic graph, per-image predictions, runtime versions, hashes and exact settings. Unmapped operations remain unverified.
-- Generate an ESP-IDF package for a compatible small TFLite model; capture matching ESP32 USB reports or import their JSON. Physical device results are separate from host metrics. EdgeLens does not flash boards automatically.
-- Connect one or more Edge Impulse projects with session-only keys, load their targets and choose a destination per test. No requires no upload; Yes explicitly authorizes an evaluated ONNX or TFLite upload after a successful test. ONNX uses provider conversion and replaces the project’s BYOM model; converted-model accuracy remains UNAVAILABLE. See [ONNX profiling](docs/EDGE-IMPULSE-ONNX.md). Provider estimates stay separate from host and physical-board measurements. No hardware is needed for this optional step.
-- Delete a completed or failed test's local report history and generated artifacts after confirmation. Original uploaded models and datasets stay; active benchmarks cannot be deleted.
-- Export complete HTML/CSV/JSON reports. Use `backend/cli.py` for a headless software-tool workflow.
+Use the [developer guide](docs/DEVELOPER-GUIDE.md) for model and dataset details, [manual software tests](docs/MANUAL-SOFTWARE-TESTS.md) for a feature-by-feature walkthrough, and the [reviewer test walkthrough](docs/REVIEWER-TEST-WALKTHROUGH.md) for a reproducible presentation sequence.
 
-TFLite **inference** works in this Windows engine, including per-tensor int8 inputs/outputs. PT2-to-TFLite **conversion** is verified for the tiny classifier on the pinned Linux worker; local Windows/WSL conversion is not verified. Import its checked worker report into the desktop tool. See [Stages 1–5](docs/STAGES-1-5.md) for the exact stack and limitations. Raspberry Pi remains a deployment goal; its hardware runner is future work. Reports include sampled whole-process RSS; this is not model-only RAM or a guaranteed true peak. No universal converter superiority, exact simulated device timing or energy claim is made.
+## What the results mean
+
+| Label | What it describes |
+| --- | --- |
+| **MEASURED · host** | Results from the current computer, runtime, and settings |
+| **ESTIMATED · Edge Impulse** | Provider analysis for an uploaded model and selected target; not a physical-device benchmark |
+| **MEASURED · device** | A matching report captured on real hardware |
+| **UNAVAILABLE** | The requested value was not measured or cannot be compared from the available reference |
+
+A Raspberry Pi or ESP32 deployment goal does not simulate that hardware. Physical-device latency and memory stay unavailable until a matching device report is imported or captured. Comparisons against published internet results must retain the source, hardware, dataset, preprocessing, runtime, and measurement conditions; EdgeLens does not claim a universal converter is better.
+
+### Optional Edge Impulse estimates
+
+Connect a project in the separate **Edge Impulse** section, load its supported targets, and select **Yes** when starting a test to authorize analysis of the evaluated ONNX or TFLite artifact. Dataset images are not uploaded. ONNX profiling may involve provider-side conversion; accuracy of that provider-converted model remains unavailable unless independently measured. See [connecting a project](docs/EDGE-IMPULSE-CONNECTION.md) and [ONNX profiling](docs/EDGE-IMPULSE-ONNX.md).
+
+## What EdgeLens includes
+
+- PyTorch export comparison and imported ONNX/TFLite benchmarking
+- Accuracy, prediction agreement, output drift, conversion time, host latency summaries, and serialized model size
+- Layer-level diagnostics, report history, and HTML/CSV/JSON exports
+- FP32 versus static INT8 QDQ experiments and validation-guided deployment search
+- Optional TFLite Linux worker reports and ESP32 report import
+- Local SQLite management for saved models and datasets
+
+Removing a saved model or dataset from the library removes its SQLite entry; it does not erase the original file or snapshots retained in reports. Deleting completed test history is a separate action.
+
+## Data and security
+
+Models, datasets, database files, and reports stay on the local computer under `%APPDATA%\EdgeLens\data`. GitHub shares the source code only. Teammates connect their own Edge Impulse project keys; never commit API keys, private datasets, model weights, or personal reports.
+
+Only load model exports you trust. PT2 loading can execute serialized code, and the local engine is not a security sandbox. Developer uploads are disabled by default on the standalone API.
 
 ## Develop
 
-Use 64-bit Node.js 22.12+ and 64-bit Python 3.12 for the tested Windows runtime:
+Use the same Python and Node versions listed above. From the repository root:
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/setup-desktop.ps1
 npm run desktop
 ```
 
-The standalone API disables custom model execution by default. The desktop's private local session and `scripts/start-backend.ps1` enable it locally. Do not enable developer uploads on a public untrusted server without a separate isolated worker design.
-
-## Test and package
+Useful existing checks:
 
 ```powershell
 npm run check
@@ -69,35 +86,8 @@ npm test
 cd backend
 $env:EDGELENS_TEST_CUSTOM='1'
 .venv/Scripts/python.exe -m unittest discover -s tests -v
-cd ..
-npm run desktop:package
 ```
 
-The custom integration suite runs tiny real PT2/ONNX, static INT8 QDQ, and FP32/int8 TFLite classifiers using synthetic fixtures. It verifies behavior, not project accuracy. The optional full pretrained MobileNetV2 smoke test uses `EDGELENS_ML_SMOKE=1` and may download official weights.
+The custom backend suite uses synthetic fixtures; it checks software behavior, not model accuracy on your project. Optional conversion and packaging paths have separate platform requirements. See [architecture](docs/ARCHITECTURE.md), [benchmark methodology](docs/BENCHMARKING.md), [verification notes](docs/VERIFICATION.md), and [deployment](docs/DEPLOYMENT.md).
 
-Packaging copies Python sources because the exporter inspects them. The optional
-portable payload is available at `release/win-unpacked`; it contains an internal
-Electron executable and is not a setup installer. The team setup path is the
-GitHub source plus `run-edgelens.cmd`. GitHub Actions checks the source setup and
-desktop runtime but does not publish an installer executable. See
-[deployment](docs/DEPLOYMENT.md) and [team setup](docs/TEAM-SETUP.md).
-
-See [architecture and frameworks](docs/ARCHITECTURE.md), [methodology](docs/BENCHMARKING.md), [API](docs/API.md) and [deployment](docs/DEPLOYMENT.md).
-
-## Earlier Phase 3 checkpoint (0.7.0)
-
-See [edge profiling and evidence](docs/EDGE-PROFILING.md) for exact artifact matching, target discovery, candidate-scoped diagnostics and the small 32x32 profiling fixture. The first live TFLite profile succeeded for the ESP-EYE target, with a saved provider response and a VERIFIED link to the same evaluated model bytes. Reports separate host MEASURED, provider ESTIMATED and ESP32 UNAVAILABLE. This synthetic fixture verifies the integration; it is not conversion-superiority evidence. At that checkpoint, a QDQ ONNX probe and validated Linux TFLite INT8 conversion were pending. The Linux conversion has since been verified in 0.9.0; the QDQ provider probe remains pending. Existing saved history remains on SQLite schema 4.
-
-
-## Review-II objective completion · version 0.9.0
-
-New structural evidence, seven controlled fault checks, pinned Linux FP32/static
-INT8 TFLite conversion, portable worker-report import, 100-sample timing defaults
-and sampled process RSS are documented in [Stages 1–5](docs/STAGES-1-5.md).
-Open **Layer diagnostics → Run seven checks** for a saved self-test, or start a
-new supported ONNX benchmark to see mapping reasons and graph connections.
-In **Reports & history**, import the inner `edgelens-worker-report.zip` produced
-by the Linux worker; Linux timings remain labelled as worker measurements.
-Use **Edge Impulse** to request estimates for an evaluated ONNX or TFLite artifact. ONNX provider conversion is tracked separately; its converted-model accuracy is UNAVAILABLE.
-Local WSL has not been verified in this session. Physical-device measurements
-and arbitrary cross-format intermediate mapping remain unavailable.
+For contribution workflow and repository layout, read [CONTRIBUTING.md](CONTRIBUTING.md).

@@ -18,6 +18,7 @@ nav{display:flex;gap:10px 20px;flex-wrap:wrap;padding:16px 0;border-bottom:1px s
 .scroll{overflow-x:auto;margin:14px 0}table{border-collapse:collapse;width:100%;font-size:14px;line-height:1.5}th{font-weight:650;background:#eff4f8;color:#233e58}th,td{padding:12px 14px;text-align:left;border-bottom:1px solid var(--line);vertical-align:top}tbody tr:nth-child(even){background:#fafbfd}td{overflow-wrap:anywhere}td.num,th.num{font-variant-numeric:tabular-nums;text-align:right;white-space:nowrap}
 .badge{font-size:11px;letter-spacing:.6px;font-weight:700;border:1px solid var(--line);padding:4px 8px;border-radius:6px;background:#f3f6fa;white-space:nowrap}.charts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px}.chart{border:1px solid var(--line);padding:16px;border-radius:10px;min-width:0}.chart h3{margin:0 0 8px}.chart svg{display:block;width:100%;height:auto}.chart-value{font-variant-numeric:tabular-nums}
 details{border:1px solid var(--line);border-radius:8px;padding:14px 16px;margin:14px 0}summary{cursor:pointer;font-weight:650}details details{background:#fafbfd}pre{background:#f4f6f9;border-radius:6px;padding:16px;font:12px/1.65 Consolas,monospace;white-space:pre-wrap;overflow-wrap:anywhere;max-height:600px;overflow:auto}code{font-size:12px;overflow-wrap:anywhere}li{margin:8px 0}.small{font-size:13px}.download-note{padding:12px 0;color:var(--muted)}
+.provider-record{border:1px solid var(--line);border-radius:10px;padding:18px;margin:18px 0;background:#fcfdfd}.provider-record h4{margin-top:0}.provider-record h5{font-size:14px;margin:18px 0 8px}.provider-record p{line-height:1.65}
 @media(max-width:800px){main{margin:0;padding:22px;border:0;border-radius:0}.cards,.charts{grid-template-columns:1fr}h1{font-size:28px}table{font-size:14px}}
 @page{size:A4 landscape;margin:14mm}@media print{body{background:white;font-size:11pt}main{margin:0;padding:0;border:0;max-width:none}h1{font-size:24pt}h2{font-size:17pt}h3{font-size:13pt}table{font-size:10pt}nav,.download-note{display:none}section{margin-top:14px;padding-top:18px}.cards,.charts{grid-template-columns:repeat(3,minmax(0,1fr))}thead{display:table-header-group}tr,.card,.chart{break-inside:avoid}details{padding:8px}pre{max-height:none}a{color:inherit}}
 """
@@ -190,7 +191,24 @@ def render_report(report):
 
     body += '<section id="edge"><h2>4. Edge evidence</h2><h3>ESP32 — ' + evidence['esp32']['status'] + '</h3><p>' + txt(evidence['esp32'].get('reason') or 'Physical reports retain their own device, artifact and input provenance.') + '</p>' + table(evidence['esp32']['records'], ['profile','source','latency_p50_ms','latency_p95_ms','arena_used_bytes','output_max_abs'])
     body += '<p class="caption">Arena usage is not total RAM. A one-image board output does not establish held-out dataset accuracy. Provider estimates and host timings do not become physical measurements.</p>' + details('Physical-device receipts', pretty(evidence['esp32']['records']))
-    body += '<h3>Edge Impulse — ' + evidence['edge_impulse']['status'] + '</h3><p>' + txt(evidence['edge_impulse']['verification']) + '</p><p>TFLite evaluation links require the same uploaded artifact. ONNX is converted by the provider; the uploaded ONNX accuracy remains a host measurement and the provider-converted accuracy remains UNAVAILABLE.</p>' + table(evidence['edge_impulse']['records'], ['project_id','device','model_format','job_id','upload_evaluation_link','accuracy_link','created_at']) + details('Test estimate choice, provider response and model hashes', pretty({'choice':report.get('edge_estimate_request', {'enabled':False}), 'records':evidence['edge_impulse']['records']})) + '</section>'
+    impulse = evidence['edge_impulse']
+    body += '<h3>Edge Impulse — ' + impulse['status'] + '</h3><p>' + txt(impulse['verification']) + '</p>'
+    body += '<p>Host CPU measurements are MEASURED on the recorded computer. Edge Impulse resource values are ESTIMATED for the selected provider target. They are not Raspberry Pi or ESP32 hardware measurements.</p>'
+    body += '<h4>Submitted provider jobs</h4>' + table(impulse['jobs'], ['model_format','project_id','device','job_id','profile_job_id','phase','status','failure_reason','created_at'])
+    if impulse['records']:
+        for provider in impulse['records']:
+            body += '<article class="provider-record"><h4>Provider estimate — ESTIMATED · ' + txt(provider.get('device')) + '</h4>'
+            body += table([provider], ['project_name','project_id','model_format','job_id','upload_evaluation_link','accuracy_link','model_sha256','created_at'])
+            if provider.get('model_format') == 'onnx':
+                body += '<p>ONNX is converted by Edge Impulse. These resource estimates describe the provider-derived model. Original ONNX accuracy remains a separate host measurement; converted-model accuracy is UNAVAILABLE.</p>'
+            else:
+                body += '<p>The uploaded TFLite artifact was profiled directly. Its provider resource results remain estimates for the selected target.</p>'
+            estimates = provider.get('resource_estimates', [])
+            body += '<h5>Provider resource fields</h5>' + (table(estimates, ['field','value','unit']) if estimates else '<p class="muted">UNAVAILABLE · The provider response contains no recognized timing, memory, flash, or support fields.</p>')
+            body += details('Sanitized provider response, identity and evaluation links', pretty({k:provider.get(k) for k in ['provider_conversion','provider_result','response_sha256','response_redaction','uploaded_artifact_evaluation','evaluation','upload_evaluation_link','accuracy_link','model_sha256','evaluated_artifact']})) + '</article>'
+    else:
+        body += '<p class="muted">No completed provider estimate is saved for this test. A submitted ONNX conversion or TFLite profile may still be running; use the Edge Impulse section to fetch its result.</p>'
+    body += details('Test estimate choice and complete Edge Impulse provenance', pretty({'choice':report.get('edge_estimate_request', {'enabled':False}), 'jobs':impulse['jobs'], 'records':impulse['records']})) + '</section>'
 
     body += '<section id="reproduce"><h2>5. Reproduce and interpret</h2><p>Use the identical model/dataset hashes, labels, preprocessing, runtime versions and settings. Importing a Linux report preserves Linux timings; it does not re-measure them on Windows.</p>'
     body += details('Input contract, datasets, settings, CPU/runtime and model artifacts', pretty({k:report.get(k) for k in ['model','dataset','datasets','settings','environment','artifacts']}))

@@ -54,6 +54,8 @@ Windows can run supported imported TFLite models. PyTorch-to-TFLite conversion u
 
 The **Edge Impulse** page connects projects with a project API key, loads available targets and keeps provider estimates separate from local measurements. Follow the [connection guide](EDGE-IMPULSE-CONNECTION.md) or the [ONNX profiling guide](EDGE-IMPULSE-ONNX.md). Choosing **Yes** for an experiment uploads its evaluated artifact after the local benchmark. Do not upload private artifacts unless intended. Physical-device timing and memory remain **UNAVAILABLE** until a matching real-device report is recorded; selecting Raspberry Pi or ESP32 as a goal does not simulate that hardware.
 
+To remove a saved upload from the dropdowns, open **Manage saved models and datasets · SQLite** under the experiment setup and choose **Remove from SQLite**. This removes the library record only. The original model or dataset file in the data folder and the dataset/model snapshots in completed reports are preserved. A model or dataset used by a queued or running test cannot be removed until that test finishes. Short ID suffixes distinguish duplicate display names in the dropdowns.
+
 ## Data, updates and sharing
 
 - Models, datasets, SQLite, reports and converted artifacts stay under `%APPDATA%\EdgeLens\data` on that laptop. GitHub shares the source only.
